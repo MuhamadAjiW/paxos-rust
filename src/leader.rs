@@ -1,3 +1,4 @@
+use crate::erasure_coding;
 use crate::network::{receive_message, send_message};
 use crate::types::PaxosMessage;
 use std::collections::HashSet;
@@ -51,6 +52,12 @@ pub async fn leader_main(leader_addr: &str, load_balancer_addr: &str) {
                 let original_message = String::from_utf8_lossy(&payload).to_string(); // Capture original client message
                 println!("Leader received request from client: {}", original_message);
 
+                // Use erasure coding for the message
+                // _TODO: Base this on configuration
+                let shard_count = 4;
+                let parity_count = 2;
+                let shard_data = erasure_coding::encode(&payload, shard_count, parity_count);
+
                 let follower_list: Vec<String> = {
                     let followers_guard = followers.lock().unwrap();
                     followers_guard.iter().cloned().collect()
@@ -65,13 +72,15 @@ pub async fn leader_main(leader_addr: &str, load_balancer_addr: &str) {
                 let majority = follower_list.len() / 2 + 1;
 
                 // Use a timeout for each follower acknowledgment
-                for follower_addr in &follower_list {
+                // for follower_addr in &follower_list {
+                for (index, follower_addr) in follower_list.iter().enumerate() {
                     // Send the request to the follower
                     send_message(
                         &socket,
                         PaxosMessage::ClientRequest {
                             request_id,
-                            payload: payload.clone(),
+                            // payload: payload.clone(),
+                            payload: shard_data[index].clone(),
                         },
                         follower_addr,
                     )

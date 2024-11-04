@@ -1,3 +1,4 @@
+mod erasure_coding;
 mod follower;
 mod leader;
 mod load_balancer;
