@@ -1,7 +1,6 @@
-use bincode::Error;
 use reed_solomon_erasure::{galois_8::Field, ReedSolomon};
 
-struct ECService {
+pub struct ECService {
     shard_count: usize,
     parity_count: usize,
     reed_solomon: ReedSolomon<Field>,
@@ -26,11 +25,14 @@ impl ECService {
         let mut padded_payload = payload.clone();
         padded_payload.resize(padded_len, 0);
 
-        let mut shards: Vec<Vec<u8>> = Vec::with_capacity(self.shard_count);
+        let mut shards: Vec<Vec<u8>> = Vec::with_capacity(self.shard_count + self.parity_count);
         for i in 0..self.shard_count {
             let start = i * shard_size;
             let end = start + shard_size;
             shards.push(padded_payload[start..end].to_vec());
+        }
+        for i in 0..self.parity_count {
+            shards.push(vec![0; shard_size]);
         }
         self.reed_solomon.encode(&mut shards).unwrap();
 

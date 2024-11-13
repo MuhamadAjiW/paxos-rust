@@ -22,4 +22,8 @@ impl Store {
     pub fn remove(&mut self, key: &str) -> String {
         return self.map.remove(key).unwrap_or("".to_string());
     }
+
+    // _TODO: Persistent data inside files
+    pub fn get_persistent(&self) {}
+    pub fn set_persistent(&self) {}
 }

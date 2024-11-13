@@ -1,3 +1,4 @@
+use crate::classes::erasure_coding::{self, ECService};
 use crate::network::{receive_message, send_message};
 use crate::types::PaxosMessage;
 use std::collections::HashSet;
@@ -6,6 +7,7 @@ use tokio::net::UdpSocket;
 use tokio::time::{sleep, timeout, Duration}; // For retrying and timeout
 
 pub async fn leader_main(leader_addr: &str, load_balancer_addr: &str) {
+    let ec = ECService::new(4, 2);
     let socket = UdpSocket::bind(leader_addr).await.unwrap();
 
     // Retry logic for registering with load balancer
@@ -50,6 +52,7 @@ pub async fn leader_main(leader_addr: &str, load_balancer_addr: &str) {
             } => {
                 let original_message = String::from_utf8_lossy(&payload).to_string(); // Capture original client message
                 println!("Leader received request from client: {}", original_message);
+                let payload_encoded = ec.encode(&payload);
 
                 let follower_list: Vec<String> = {
                     let followers_guard = followers.lock().unwrap();
@@ -65,13 +68,14 @@ pub async fn leader_main(leader_addr: &str, load_balancer_addr: &str) {
                 let majority = follower_list.len() / 2 + 1;
 
                 // Use a timeout for each follower acknowledgment
-                for follower_addr in &follower_list {
+                for (index, follower_addr) in follower_list.iter().enumerate() {
                     // Send the request to the follower
                     send_message(
                         &socket,
                         PaxosMessage::ClientRequest {
                             request_id,
-                            payload: payload.clone(),
+                            // payload: payload.clone(),
+                            payload: payload_encoded[index].clone(),
                         },
                         follower_addr,
                     )
