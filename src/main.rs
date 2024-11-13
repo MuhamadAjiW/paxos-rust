@@ -1,6 +1,4 @@
-mod erasure_coding;
 mod follower;
-mod key_val_db;
 mod leader;
 mod load_balancer;
 mod network;
