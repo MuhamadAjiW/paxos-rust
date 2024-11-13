@@ -31,7 +31,7 @@ impl ECService {
             let end = start + shard_size;
             shards.push(padded_payload[start..end].to_vec());
         }
-        for i in 0..self.parity_count {
+        for _ in 0..self.parity_count {
             shards.push(vec![0; shard_size]);
         }
         self.reed_solomon.encode(&mut shards).unwrap();
@@ -39,11 +39,11 @@ impl ECService {
         shards
     }
 
-    pub fn reconstruct(
-        &self,
-        data: &mut Vec<Option<Vec<u8>>>,
-    ) -> Result<(), reed_solomon_erasure::Error> {
-        self.reed_solomon.reconstruct(data)?;
-        Ok(())
-    }
+    // pub fn reconstruct(
+    //     &self,
+    //     data: &mut Vec<Option<Vec<u8>>>,
+    // ) -> Result<(), reed_solomon_erasure::Error> {
+    //     self.reed_solomon.reconstruct(data)?;
+    //     Ok(())
+    // }
 }

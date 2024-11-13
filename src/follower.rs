@@ -60,12 +60,31 @@ pub async fn follower_main(follower_addr: &str, leader_addr: &str, load_balancer
                     )
                     .await
                     .unwrap();
-                } else {
-                    println!("Follower received request from leader: {:?}", payload);
-                    let ack = PaxosMessage::FollowerAck { request_id };
-                    send_message(&socket, ack, &leader_addr).await.unwrap();
-                    println!("Follower acknowledged request ID: {}", request_id);
                 }
+                // else {
+                //     println!("Follower received request from leader: {:?}", payload);
+                //     let ack = PaxosMessage::FollowerAck { request_id };
+                //     send_message(&socket, ack, &leader_addr).await.unwrap();
+                //     println!("Follower acknowledged request ID: {}", request_id);
+                // }
+            }
+            PaxosMessage::LeaderRequest { request_id } => {
+                println!("Follower received request message from leader");
+                let ack = PaxosMessage::FollowerAck { request_id };
+                send_message(&socket, ack, &leader_addr).await.unwrap();
+                println!("Follower acknowledged request ID: {}", request_id);
+            }
+            PaxosMessage::LeaderAccepted {
+                request_id,
+                payload,
+            } => {
+                println!(
+                    "Follower received accept message from leader: {:?}",
+                    payload
+                );
+                let ack = PaxosMessage::FollowerAck { request_id };
+                send_message(&socket, ack, &leader_addr).await.unwrap();
+                println!("Follower acknowledged request ID: {}", request_id);
             }
             _ => {}
         }

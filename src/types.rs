@@ -7,6 +7,8 @@ pub struct FollowerRegistration {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PaxosMessage {
+    LeaderRequest { request_id: u64 },
+    LeaderAccepted { request_id: u64, payload: Vec<u8> },
     ClientRequest { request_id: u64, payload: Vec<u8> },
     FollowerAck { request_id: u64 },
     RegisterFollower(FollowerRegistration),
