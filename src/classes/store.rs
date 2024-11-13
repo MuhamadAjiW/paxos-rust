@@ -35,6 +35,9 @@ impl Store {
             RequestType::BAD => {
                 response = format!("Bad command received\n");
             }
+            RequestType::PING => {
+                response = format!("PONG\n");
+            }
             RequestType::GET => {
                 self.get_persistent();
                 response = format!("{}\n", self.get(&request.key));

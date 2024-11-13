@@ -3,6 +3,7 @@ use core::fmt;
 #[derive(PartialEq)]
 pub enum RequestType {
     BAD,
+    PING,
     GET,
     SET,
     REMOVE,
@@ -14,6 +15,7 @@ impl fmt::Display for RequestType {
         let str;
         match self {
             RequestType::BAD => str = "BAD",
+            RequestType::PING => str = "PING",
             RequestType::GET => str = "GET",
             RequestType::SET => str = "SET",
             RequestType::REMOVE => str = "REMOVE",
@@ -41,6 +43,13 @@ impl Request {
         }
 
         match parts.as_slice() {
+            ["PING"] => {
+                return Some(Request {
+                    reqtype: RequestType::PING,
+                    key: "".to_string(),
+                    val: "".to_string(),
+                })
+            }
             ["GET", key] => {
                 return Some(Request {
                     reqtype: RequestType::GET,
