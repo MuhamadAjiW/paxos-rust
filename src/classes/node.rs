@@ -27,8 +27,9 @@ pub struct Node {
     pub request_id: u64,
 
     // Application attributes
-    pub _store: Store,
+    pub store: Store,
     pub ec: ECService,
+    pub ec_active: bool,
 }
 
 impl Node {
@@ -39,6 +40,7 @@ impl Node {
         state: PaxosState,
         shard_count: usize,
         parity_count: usize,
+        ec_active: bool,
     ) -> Self {
         let socket = UdpSocket::bind(address.to_string()).await.unwrap();
         let running = false;
@@ -56,8 +58,9 @@ impl Node {
             followers,
             state,
             request_id,
-            _store: store,
+            store,
             ec,
+            ec_active,
         };
     }
 
@@ -113,5 +116,6 @@ impl Node {
         println!("Leader: {}", self.leader_address.to_string());
         println!("Load Balancer: {}", self.load_balancer_address.to_string());
         println!("State: {}", self.state.to_string());
+        println!("Erasure Coding: {}", self.ec_active.to_string());
     }
 }

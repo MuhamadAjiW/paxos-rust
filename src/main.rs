@@ -3,8 +3,6 @@ use classes::node::Node;
 
 mod base_libs;
 mod classes;
-mod follower;
-mod leader;
 mod load_balancer;
 mod network;
 mod types;
@@ -14,6 +12,7 @@ async fn main() {
     let role = std::env::args().nth(1).expect("No role provided");
     let shard_count = 4;
     let parity_count = 2;
+    let ec_active = true;
 
     if role == "leader" {
         let address = Address::new("127.0.0.1", 8080);
@@ -26,13 +25,11 @@ async fn main() {
             PaxosState::Leader,
             shard_count,
             parity_count,
+            ec_active,
         )
         .await;
 
         node.run().await;
-        // let leader_addr = "127.0.0.1:8080"; // Leader address
-        // let load_balancer_addr = "127.0.0.1:8000"; // Load balancer address
-        // leader::leader_main(leader_addr, load_balancer_addr).await;
     } else if role == "follower" {
         let follower_addr_input = std::env::args()
             .nth(2)
@@ -52,18 +49,11 @@ async fn main() {
             PaxosState::Follower,
             shard_count,
             parity_count,
+            ec_active,
         )
         .await;
 
-
         node.run().await;
-
-        // follower::follower_main(
-        //     &follower_addr_input,
-        //     &leader_addr_input,
-        //     &load_balancer_addr_input,
-        // )
-        // .await;
     } else if role == "load_balancer" {
         let mut lb = load_balancer::LoadBalancer::new(); // Declare lb as mutable
         lb.listen_and_route("127.0.0.1:8000").await; // Call listen_and_route with mutable reference
