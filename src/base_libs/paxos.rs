@@ -1,11 +1,72 @@
 use crate::{
+    classes::node::Node,
     network::{receive_message, send_message},
-    types::PaxosMessage,
+    types::{FollowerRegistration, PaxosMessage},
 };
-use std::time::Duration;
+use std::{fmt, time::Duration, u64};
 use tokio::{net::UdpSocket, time::timeout};
 
+// ---PaxosState---
+pub enum PaxosState {
+    Follower,
+    Leader,
+}
+impl fmt::Display for PaxosState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PaxosState::Follower => write!(f, "Follower"),
+            PaxosState::Leader => write!(f, "Leader"),
+        }
+    }
+}
+
+// _TODO: Implement handlers
+// ---Node Commands---
+impl Node {
+    pub async fn handle_leader_request(&self, src_addr: String, request_id: u64) {
+        match self.state {
+            PaxosState::Follower => {}
+            PaxosState::Leader => {}
+        }
+    }
+    pub async fn handle_leader_accepted(
+        &self,
+        src_addr: String,
+        request_id: u64,
+        payload: Vec<u8>,
+    ) {
+        match self.state {
+            PaxosState::Follower => {}
+            PaxosState::Leader => {}
+        }
+    }
+    pub async fn handle_client_request(&self, src_addr: String, request_id: u64, payload: Vec<u8>) {
+        match self.state {
+            PaxosState::Follower => {}
+
+            PaxosState::Leader => {}
+        }
+    }
+    pub async fn handle_follower_ack(&self, src_addr: String, request_id: u64) {
+        match self.state {
+            PaxosState::Follower => {}
+            PaxosState::Leader => {}
+        }
+    }
+    pub async fn handle_follower_register(
+        &self,
+        src_addr: String,
+        follower: &FollowerRegistration,
+    ) {
+        match self.state {
+            PaxosState::Follower => {}
+            PaxosState::Leader => {}
+        }
+    }
+}
+
 // _TODO: these should be class functions, but will do for now
+// ---Temp---
 pub async fn broadcast_prepare(
     follower_list: &Vec<String>,
     socket: &UdpSocket,

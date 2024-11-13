@@ -42,7 +42,7 @@ pub async fn leader_main(leader_addr: &str, load_balancer_addr: &str) {
         let (message, _src_addr) = receive_message(&socket).await.unwrap();
 
         match message {
-            PaxosMessage::RegisterFollower(follower) => {
+            PaxosMessage::FollowerRegister(follower) => {
                 let mut followers_guard = followers.lock().unwrap();
                 followers_guard.insert(follower.follower_addr.clone());
                 println!("Follower registered: {}", follower.follower_addr);
@@ -92,90 +92,6 @@ pub async fn leader_main(leader_addr: &str, load_balancer_addr: &str) {
                         .await
                         .unwrap();
                 }
-
-                // if follower_list.is_empty() {
-                //     println!("No followers registered. Cannot proceed.");
-                //     continue;
-                // }
-
-                // let mut acks = 0;
-                // let majority = follower_list.len() / 2 + 1;
-
-                // // Use a timeout for each follower acknowledgment
-                // for (index, follower_addr) in follower_list.iter().enumerate() {
-                //     // Send the request to the follower
-                //     send_message(
-                //         &socket,
-                //         PaxosMessage::ClientRequest {
-                //             request_id,
-                //             // payload: payload.clone(),
-                //             payload: payload_encoded[index].clone(),
-                //         },
-                //         follower_addr,
-                //     )
-                //     .await
-                //     .unwrap();
-                //     println!(
-                //         "Leader broadcasted request to follower at {}",
-                //         follower_addr
-                //     );
-
-                //     // Wait for acknowledgment with timeout (ex. 2 seconds)
-                //     match timeout(Duration::from_secs(2), receive_message(&socket)).await {
-                //         Ok(Ok((ack, _))) => {
-                //             if let PaxosMessage::FollowerAck { .. } = ack {
-                //                 acks += 1;
-                //                 println!(
-                //                     "Leader received acknowledgment from follower at {}",
-                //                     follower_addr
-                //                 );
-                //             }
-                //         }
-                //         Ok(Err(e)) => {
-                //             println!(
-                //                 "Error receiving acknowledgment from follower at {}: {}",
-                //                 follower_addr, e
-                //             );
-                //         }
-                //         Err(_) => {
-                //             println!(
-                //                 "Timeout waiting for acknowledgment from follower at {}",
-                //                 follower_addr
-                //             );
-                //         }
-                //     }
-
-                //     // If majority is reached, respond to load balancer immediately
-                //     if acks >= majority {
-                //         println!("Leader received majority acknowledgment, responding to load balancer at {}", load_balancer_addr);
-
-                //         let response = format!(
-                //             "Request ID: {}\nOriginal Message: {}\nAcknowledgments Received: {}\nTotal Followers: {}\n",
-                //             request_id, original_message, acks, follower_list.len()
-                //         );
-                //         socket
-                //             .send_to(response.as_bytes(), load_balancer_addr)
-                //             .await
-                //             .unwrap();
-                //         break; // Stop once majority is reached
-                //     }
-                // }
-
-                // if acks < majority {
-                //     println!(
-                //         "Not enough acknowledgments to proceed (Received: {}, Majority: {}).",
-                //         acks, majority
-                //     );
-                //     let response = format!(
-                //         "Request ID: {}\nNot enough acknowledgments to proceed (Received: {}, Majority: {}).",
-                //         request_id, acks, majority
-                //     );
-                //     socket
-                //         .send_to(response.as_bytes(), load_balancer_addr)
-                //         .await
-                //         .unwrap();
-                //     break;
-                // }
             }
             _ => {}
         }

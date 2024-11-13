@@ -7,7 +7,7 @@ pub async fn follower_main(follower_addr: &str, leader_addr: &str, load_balancer
     let socket = UdpSocket::bind(follower_addr).await.unwrap();
 
     // Register with the leader
-    let registration_message = PaxosMessage::RegisterFollower(FollowerRegistration {
+    let registration_message = PaxosMessage::FollowerRegister(FollowerRegistration {
         follower_addr: follower_addr.to_string(),
     });
     send_message(&socket, registration_message, leader_addr)
@@ -61,12 +61,6 @@ pub async fn follower_main(follower_addr: &str, leader_addr: &str, load_balancer
                     .await
                     .unwrap();
                 }
-                // else {
-                //     println!("Follower received request from leader: {:?}", payload);
-                //     let ack = PaxosMessage::FollowerAck { request_id };
-                //     send_message(&socket, ack, &leader_addr).await.unwrap();
-                //     println!("Follower acknowledged request ID: {}", request_id);
-                // }
             }
             PaxosMessage::LeaderRequest { request_id } => {
                 println!("Follower received request message from leader");

@@ -11,5 +11,5 @@ pub enum PaxosMessage {
     LeaderAccepted { request_id: u64, payload: Vec<u8> },
     ClientRequest { request_id: u64, payload: Vec<u8> },
     FollowerAck { request_id: u64 },
-    RegisterFollower(FollowerRegistration),
+    FollowerRegister(FollowerRegistration),
 }
