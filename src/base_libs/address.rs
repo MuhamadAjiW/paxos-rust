@@ -1,10 +1,5 @@
 use core::fmt;
-
-// ---AddressInput---
-pub enum AddressInput {
-    IpAndPort(String, u16),
-    Address(Address),
-}
+use std::net::SocketAddr;
 
 // ---Address---
 pub struct Address {
@@ -19,10 +14,13 @@ impl Address {
         };
     }
 
-    pub fn get(input: AddressInput) -> Self {
-        match input {
-            AddressInput::Address(addr) => return addr,
-            AddressInput::IpAndPort(ip, port) => return Address::new(&ip, port),
+    pub fn from_string(ip: &str) -> Option<Self> {
+        if let Ok(socket_addr) = ip.parse::<SocketAddr>() {
+            let ip = socket_addr.ip().to_string();
+            let port = socket_addr.port();
+            Some(Address { ip, port })
+        } else {
+            None
         }
     }
 }
