@@ -3,8 +3,8 @@ use std::time::Duration;
 use tokio::time::timeout;
 
 use crate::{
-    base_libs::operation::Operation,
-    classes::{node::Node, store::BinKV},
+    base_libs::operation::{BinKV, Operation},
+    classes::node::Node,
     network::{receive_message, send_message},
     types::{FollowerRegistration, PaxosMessage},
 };
@@ -68,6 +68,7 @@ impl Node {
     async fn leader_broadcast_accept_ec(
         &self,
         follower_list: &Vec<String>,
+        operation: &Operation,
         encoded_shard: &Vec<Vec<u8>>,
     ) -> usize {
         if follower_list.is_empty() {
@@ -78,12 +79,20 @@ impl Node {
         let mut acks = 0;
 
         for (index, follower_addr) in follower_list.iter().enumerate() {
+            let sent_operation = Operation {
+                op_type: operation.op_type.clone(),
+                kv: BinKV {
+                    key: operation.kv.key.clone(),
+                    value: encoded_shard[index].clone(),
+                },
+            };
+
             // Send the request to the follower
             send_message(
                 &self.socket,
                 PaxosMessage::LeaderAccepted {
                     request_id: self.request_id,
-                    payload: encoded_shard[index].clone(),
+                    operation: sent_operation,
                 },
                 follower_addr,
             )
@@ -127,7 +136,7 @@ impl Node {
     async fn leader_broadcast_accept_replication(
         &self,
         follower_list: &Vec<String>,
-        encoded_shard: &Vec<u8>,
+        operation: &Operation,
     ) -> usize {
         if follower_list.is_empty() {
             println!("No followers registered. Cannot proceed.");
@@ -142,7 +151,7 @@ impl Node {
                 &self.socket,
                 PaxosMessage::LeaderAccepted {
                     request_id: self.request_id,
-                    payload: encoded_shard.clone(),
+                    operation: operation.clone(),
                 },
                 follower_addr,
             )
@@ -206,13 +215,13 @@ impl Node {
         let initial_request_id = self.request_id;
 
         let follower_list: Vec<String> = {
-            let followers_guard = self.followers.lock().unwrap();
+            let followers_guard = self.cluster_list.lock().unwrap();
             followers_guard.iter().cloned().collect()
         };
 
         let majority = follower_list.len() / 2 + 1;
         let mut acks = self.leader_broadcast_prepare(&follower_list).await;
-        let mut result: String;
+        let result: String;
         let message: &str;
 
         if acks >= majority {
@@ -225,19 +234,14 @@ impl Node {
             // }
 
             if self.ec_active {
-                let encoded_shard = self.ec.encode(&payload);
-                let kv = BinKV {
-                    key: operation.key,
-                    value: encoded_shard[0].clone(),
-                };
-                let _ = self.store.persist_request_ec(&operation.op_type, &kv).await;
+                let encoded_shard = self.ec.encode(&operation.kv.value);
 
                 acks = self
-                    .leader_broadcast_accept_ec(&follower_list, &encoded_shard)
+                    .leader_broadcast_accept_ec(&follower_list, &operation, &encoded_shard)
                     .await;
             } else {
                 acks = self
-                    .leader_broadcast_accept_replication(&follower_list, &payload)
+                    .leader_broadcast_accept_replication(&follower_list, &operation)
                     .await;
             }
 
@@ -264,8 +268,8 @@ impl Node {
     }
 
     pub async fn leader_handle_follower_register(&self, follower: &FollowerRegistration) {
-        let mut followers_guard = self.followers.lock().unwrap();
-        followers_guard.insert(follower.follower_addr.clone());
+        let mut followers_guard = self.cluster_list.lock().unwrap();
+        followers_guard.push(follower.follower_addr.clone());
         println!("Follower registered: {}", follower.follower_addr);
     }
 
@@ -275,7 +279,7 @@ impl Node {
         &self,
         _src_addr: &String,
         _request_id: u64,
-        _payload: &Vec<u8>,
+        _operation: &Operation,
     ) {
     }
     // _TODO: handle false message

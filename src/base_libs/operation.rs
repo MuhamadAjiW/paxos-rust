@@ -1,6 +1,8 @@
 use core::fmt;
 
-#[derive(PartialEq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum OperationType {
     BAD,
     PING,
@@ -25,10 +27,16 @@ impl fmt::Display for OperationType {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Operation {
     pub op_type: OperationType,
+    pub kv: BinKV,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BinKV {
     pub key: String,
-    pub val: String,
+    pub value: Vec<u8>,
 }
 
 // ---Operation---
@@ -46,36 +54,46 @@ impl Operation {
             ["PING"] => {
                 return Some(Operation {
                     op_type: OperationType::PING,
-                    key: "".to_string(),
-                    val: "".to_string(),
+                    kv: BinKV {
+                        key: "".to_string(),
+                        value: vec![],
+                    },
                 })
             }
             ["GET", key] => {
                 return Some(Operation {
                     op_type: OperationType::GET,
-                    key: key.to_string(),
-                    val: "".to_string(),
+                    kv: BinKV {
+                        key: key.to_string(),
+                        value: vec![],
+                    },
                 })
             }
             ["SET", key, val] => {
                 return Some(Operation {
                     op_type: OperationType::SET,
-                    key: key.to_string(),
-                    val: val.to_string(),
+                    kv: BinKV {
+                        key: key.to_string(),
+                        value: val.as_bytes().to_vec(),
+                    },
                 })
             }
             ["DEL", key] => {
                 return Some(Operation {
                     op_type: OperationType::DELETE,
-                    key: key.to_string(),
-                    val: "".to_string(),
+                    kv: BinKV {
+                        key: key.to_string(),
+                        value: vec![],
+                    },
                 })
             }
             _ => {
                 return Some(Operation {
                     op_type: OperationType::BAD,
-                    key: "".to_string(),
-                    val: "".to_string(),
+                    kv: BinKV {
+                        key: "".to_string(),
+                        value: vec![],
+                    },
                 })
             }
         }
@@ -84,6 +102,6 @@ impl Operation {
 
 impl fmt::Display for Operation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {} {}", self.op_type, self.key, self.val)
+        write!(f, "{}: {} {:?}", self.op_type, self.kv.key, self.kv.value)
     }
 }

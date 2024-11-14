@@ -1,7 +1,4 @@
-use std::{
-    collections::HashSet,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
 use tokio::net::UdpSocket;
 
@@ -22,7 +19,8 @@ pub struct Node {
     // Paxos related attributes
     pub load_balancer_address: Address,
     pub leader_address: Address,
-    pub followers: Arc<Mutex<HashSet<String>>>,
+    pub cluster_list: Arc<Mutex<Vec<String>>>,
+    pub cluster_index: u64,
     pub state: PaxosState,
     pub request_id: u64,
 
@@ -44,7 +42,8 @@ impl Node {
     ) -> Self {
         let socket = UdpSocket::bind(address.to_string()).await.unwrap();
         let running = false;
-        let followers = Arc::new(Mutex::new(HashSet::new()));
+        let cluster_list = Arc::new(Mutex::new(Vec::new()));
+        let cluster_index = 0;
         let store = Store::new();
         let request_id = 0;
         let ec = ECService::new(shard_count, parity_count);
@@ -55,7 +54,8 @@ impl Node {
             running,
             load_balancer_address,
             leader_address,
-            followers,
+            cluster_list,
+            cluster_index,
             state,
             request_id,
             store,
@@ -85,9 +85,9 @@ impl Node {
 
                 PaxosMessage::LeaderAccepted {
                     request_id,
-                    payload,
+                    operation,
                 } => {
-                    self.handle_leader_accepted(&src_addr, request_id, &payload)
+                    self.handle_leader_accepted(&src_addr, request_id, &operation)
                         .await
                 }
 
@@ -107,9 +107,7 @@ impl Node {
                     self.handle_follower_register(&src_addr, &follower).await
                 }
 
-                PaxosMessage::RecoveryRequest { key } => {
-                    self.handle_recovery_request(&key).await
-                }
+                PaxosMessage::RecoveryRequest { key } => self.handle_recovery_request(&key).await,
 
                 // TODO: Handle faulty requests
                 PaxosMessage::RecoveryReply { payload: _ } => {}

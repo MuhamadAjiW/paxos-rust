@@ -6,6 +6,8 @@ use crate::{
     types::{FollowerRegistration, PaxosMessage},
 };
 
+use super::operation::Operation;
+
 impl Node {
     // ---Active Commands---
     pub async fn follower_send_register(&self) -> bool {
@@ -68,7 +70,7 @@ impl Node {
         &self,
         src_addr: &String,
         request_id: u64,
-        payload: &Vec<u8>,
+        operation: &Operation,
     ) {
         let leader_addr = &self.leader_address.to_string() as &str;
         if src_addr != leader_addr {
@@ -77,8 +79,8 @@ impl Node {
         }
 
         println!(
-            "Follower received accept message from leader: {:?}",
-            payload
+            "Follower received accept message from leader:\nKey: {}, Shard: {:?}",
+            operation.kv.key, operation.kv.value
         );
         let ack = PaxosMessage::FollowerAck { request_id };
         send_message(&self.socket, ack, &leader_addr).await.unwrap();

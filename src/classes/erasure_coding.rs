@@ -17,12 +17,12 @@ impl ECService {
         }
     }
 
-    pub fn encode(&self, payload: &Vec<u8>) -> Vec<Vec<u8>> {
-        let payload_len = payload.len();
+    pub fn encode(&self, value: &Vec<u8>) -> Vec<Vec<u8>> {
+        let payload_len = value.len();
         let shard_size = (payload_len + self.shard_count - 1) / self.shard_count;
         let padded_len = shard_size * self.shard_count;
 
-        let mut padded_payload = payload.clone();
+        let mut padded_payload = value.clone();
         padded_payload.resize(padded_len, 0);
 
         let mut shards: Vec<Vec<u8>> = Vec::with_capacity(self.shard_count + self.parity_count);

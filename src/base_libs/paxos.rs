@@ -1,6 +1,8 @@
 use crate::{classes::node::Node, types::FollowerRegistration};
 use std::{fmt, u64};
 
+use super::operation::Operation;
+
 // ---PaxosState---
 pub enum PaxosState {
     Follower,
@@ -34,15 +36,15 @@ impl Node {
         &self,
         src_addr: &String,
         request_id: u64,
-        payload: &Vec<u8>,
+        operation: &Operation,
     ) {
         match self.state {
             PaxosState::Follower => {
-                self.follower_handle_leader_accepted(src_addr, request_id, payload)
+                self.follower_handle_leader_accepted(src_addr, request_id, operation)
                     .await
             }
             PaxosState::Leader => {
-                self.leader_handle_leader_accepted(src_addr, request_id, payload)
+                self.leader_handle_leader_accepted(src_addr, request_id, operation)
                     .await
             }
         }

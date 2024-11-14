@@ -5,7 +5,6 @@ use std::{
 };
 
 use bincode::{deserialize, serialize};
-use serde::{Deserialize, Serialize};
 use tokio::{
     fs::{File, OpenOptions},
     io::{AsyncReadExt, AsyncWriteExt, BufReader},
@@ -13,18 +12,12 @@ use tokio::{
 };
 
 use crate::{
-    base_libs::operation::{Operation, OperationType},
+    base_libs::operation::{BinKV, Operation, OperationType},
     network::{receive_message, send_message},
     types::PaxosMessage,
 };
 
 use super::node::Node;
-
-#[derive(Serialize, Deserialize)]
-pub struct BinKV {
-    pub key: String,
-    pub value: Vec<u8>,
-}
 
 pub struct Store {
     map: HashMap<String, String>,
@@ -64,20 +57,25 @@ impl Store {
                 response = format!("PONG\n");
             }
             OperationType::GET => {
-                let result = self.get(&request.key);
+                let result = self.get(&request.kv.key);
 
-                if !self.get(&request.key).is_empty() {
+                if !self.get(&request.kv.key).is_empty() {
                     response = String::new();
                 } else {
                     response = format!("{}\n", result);
                 }
             }
             OperationType::SET => {
-                self.set(&request.key.clone(), &request.val.clone());
+                self.set(
+                    &request.kv.key.clone(),
+                    String::from_utf8(request.kv.value.clone())
+                        .unwrap()
+                        .as_str(),
+                );
                 response = "OK\n".to_string();
             }
             OperationType::DELETE => {
-                self.remove(&request.key);
+                self.remove(&request.kv.key);
                 response = "OK\n".to_string();
             }
         }
@@ -86,14 +84,10 @@ impl Store {
     }
 
     // _TODO: Persistent data inside files
-    pub async fn persist_request_ec(
-        &mut self,
-        request_type: &OperationType,
-        kv: &BinKV,
-    ) -> Result<(), io::Error> {
-        match request_type {
+    pub async fn persist_request_ec(&mut self, operation_ec: &Operation) -> Result<(), io::Error> {
+        match operation_ec.op_type {
             OperationType::SET | OperationType::DELETE => {
-                self.write_to_wal(request_type, kv).await?;
+                self.write_to_wal(operation_ec).await?;
             }
             _ => {}
         }
@@ -131,20 +125,17 @@ impl Store {
         Ok(value)
     }
 
-    pub async fn write_to_wal(
-        &self,
-        request_type: &OperationType,
-        kv: &BinKV,
-    ) -> Result<(), io::Error> {
+    pub async fn write_to_wal(&self, operation_ec: &Operation) -> Result<(), io::Error> {
         let mut wal = OpenOptions::new()
             .append(true)
             .create(true)
             .open(&self.wal_path)
             .await?;
 
-        wal.write_all(request_type.to_string().as_bytes()).await?;
+        wal.write_all(operation_ec.op_type.to_string().as_bytes())
+            .await?;
 
-        let encoded = serialize(kv).unwrap();
+        let encoded = serialize(&operation_ec.kv).unwrap();
         wal.write_all(&encoded).await?;
         wal.flush().await?;
 
@@ -161,7 +152,7 @@ impl Node {
         match self.store.get_from_wal(key).await {
             Ok(Some(value)) => {
                 let follower_list: Vec<String> = {
-                    let followers_guard = self.followers.lock().unwrap();
+                    let followers_guard = self.cluster_list.lock().unwrap();
                     followers_guard.iter().cloned().collect()
                 };
 
