@@ -3,7 +3,7 @@ use std::time::Duration;
 use tokio::time::timeout;
 
 use crate::{
-    base_libs::operation::{BinKV, Operation},
+    base_libs::operation::{BinKV, Operation, OperationType},
     classes::node::Node,
     network::{receive_message, send_message},
     types::{FollowerRegistration, PaxosMessage},
@@ -233,25 +233,32 @@ impl Node {
             //     result = self.get_from_cluster(&operation.key).await.expect("Failed to get from cluster");
             // }
 
-            if self.ec_active {
-                let encoded_shard = self.ec.encode(&operation.kv.value);
+            if matches!(
+                operation.op_type,
+                OperationType::SET | OperationType::DELETE
+            ) {
+                if self.ec_active {
+                    let encoded_shard = self.ec.encode(&operation.kv.value);
 
-                acks = self
-                    .leader_broadcast_accept_ec(&follower_list, &operation, &encoded_shard)
-                    .await;
+                    acks = self
+                        .leader_broadcast_accept_ec(&follower_list, &operation, &encoded_shard)
+                        .await;
+                } else {
+                    acks = self
+                        .leader_broadcast_accept_replication(&follower_list, &operation)
+                        .await;
+                }
+
+                if acks > majority {
+                    message = "Leader broadcasted the message successfully";
+                } else {
+                    message = "Accept broadcast is not accepted by majority";
+                }
+
+                self.request_id += 1;
             } else {
-                acks = self
-                    .leader_broadcast_accept_replication(&follower_list, &operation)
-                    .await;
+                message = "Leader received the message";
             }
-
-            if acks > majority {
-                message = "Leader broadcasted the message successfully";
-            } else {
-                message = "Accept broadcast is not accepted by majority";
-            }
-
-            self.request_id += 1;
         } else {
             result = "Request failed.".to_string();
             message = "Request broadcast is not accepted by majority";

@@ -34,7 +34,9 @@ impl ECService {
         for _ in 0..self.parity_count {
             shards.push(vec![0; shard_size]);
         }
-        self.reed_solomon.encode(&mut shards).unwrap();
+        self.reed_solomon
+            .encode(&mut shards)
+            .expect("Failed to encode message");
 
         shards
     }

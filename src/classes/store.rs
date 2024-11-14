@@ -59,7 +59,7 @@ impl Store {
             OperationType::GET => {
                 let result = self.get(&request.kv.key);
 
-                if !self.get(&request.kv.key).is_empty() {
+                if self.get(&request.kv.key).is_empty() {
                     response = String::new();
                 } else {
                     response = format!("{}\n", result);
