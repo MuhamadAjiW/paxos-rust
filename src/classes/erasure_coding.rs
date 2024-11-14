@@ -39,11 +39,11 @@ impl ECService {
         shards
     }
 
-    // pub fn reconstruct(
-    //     &self,
-    //     data: &mut Vec<Option<Vec<u8>>>,
-    // ) -> Result<(), reed_solomon_erasure::Error> {
-    //     self.reed_solomon.reconstruct(data)?;
-    //     Ok(())
-    // }
+    pub fn reconstruct(
+        &self,
+        data: &mut Vec<Option<Vec<u8>>>,
+    ) -> Result<(), reed_solomon_erasure::Error> {
+        self.reed_solomon.reconstruct(data)?;
+        Ok(())
+    }
 }

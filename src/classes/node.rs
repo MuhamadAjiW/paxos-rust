@@ -106,6 +106,13 @@ impl Node {
                 PaxosMessage::FollowerRegister(follower) => {
                     self.handle_follower_register(&src_addr, &follower).await
                 }
+
+                PaxosMessage::RecoveryRequest { key } => {
+                    self.handle_recovery_request(&key).await
+                }
+
+                // TODO: Handle faulty requests
+                PaxosMessage::RecoveryReply { payload: _ } => {}
             }
         }
     }

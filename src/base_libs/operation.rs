@@ -1,38 +1,38 @@
 use core::fmt;
 
 #[derive(PartialEq)]
-pub enum RequestType {
+pub enum OperationType {
     BAD,
     PING,
     GET,
     SET,
-    REMOVE,
+    DELETE,
 }
 
 // ---RequestType---
-impl fmt::Display for RequestType {
+impl fmt::Display for OperationType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let str;
         match self {
-            RequestType::BAD => str = "BAD",
-            RequestType::PING => str = "PING",
-            RequestType::GET => str = "GET",
-            RequestType::SET => str = "SET",
-            RequestType::REMOVE => str = "REMOVE",
+            OperationType::BAD => str = "BAD",
+            OperationType::PING => str = "PING",
+            OperationType::GET => str = "GET",
+            OperationType::SET => str = "SET",
+            OperationType::DELETE => str = "DEL",
         }
 
         write!(f, "{}", str)
     }
 }
 
-pub struct Request {
-    pub reqtype: RequestType,
+pub struct Operation {
+    pub op_type: OperationType,
     pub key: String,
     pub val: String,
 }
 
-// ---Request---
-impl Request {
+// ---Operation---
+impl Operation {
     pub fn parse(payload: &Vec<u8>) -> Option<Self> {
         let payload_str = String::from_utf8(payload.clone()).ok()?;
         let command = payload_str.trim();
@@ -44,36 +44,36 @@ impl Request {
 
         match parts.as_slice() {
             ["PING"] => {
-                return Some(Request {
-                    reqtype: RequestType::PING,
+                return Some(Operation {
+                    op_type: OperationType::PING,
                     key: "".to_string(),
                     val: "".to_string(),
                 })
             }
             ["GET", key] => {
-                return Some(Request {
-                    reqtype: RequestType::GET,
+                return Some(Operation {
+                    op_type: OperationType::GET,
                     key: key.to_string(),
                     val: "".to_string(),
                 })
             }
             ["SET", key, val] => {
-                return Some(Request {
-                    reqtype: RequestType::SET,
+                return Some(Operation {
+                    op_type: OperationType::SET,
                     key: key.to_string(),
                     val: val.to_string(),
                 })
             }
-            ["REMOVE", key] => {
-                return Some(Request {
-                    reqtype: RequestType::REMOVE,
+            ["DEL", key] => {
+                return Some(Operation {
+                    op_type: OperationType::DELETE,
                     key: key.to_string(),
                     val: "".to_string(),
                 })
             }
             _ => {
-                return Some(Request {
-                    reqtype: RequestType::BAD,
+                return Some(Operation {
+                    op_type: OperationType::BAD,
                     key: "".to_string(),
                     val: "".to_string(),
                 })
@@ -82,8 +82,8 @@ impl Request {
     }
 }
 
-impl fmt::Display for Request {
+impl fmt::Display for Operation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {} {}", self.reqtype, self.key, self.val)
+        write!(f, "{}: {} {}", self.op_type, self.key, self.val)
     }
 }

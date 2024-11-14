@@ -3,8 +3,8 @@ use std::time::Duration;
 use tokio::time::timeout;
 
 use crate::{
-    base_libs::request::Request,
-    classes::node::Node,
+    base_libs::operation::Operation,
+    classes::{node::Node, store::BinKV},
     network::{receive_message, send_message},
     types::{FollowerRegistration, PaxosMessage},
 };
@@ -195,7 +195,7 @@ impl Node {
             "Leader received request from {}: {}",
             src_addr, original_message
         );
-        let req = Request::parse(payload);
+        let req = Operation::parse(payload);
 
         if matches!(req, None) {
             println!("Request was invalid, dropping request");
@@ -212,14 +212,26 @@ impl Node {
 
         let majority = follower_list.len() / 2 + 1;
         let mut acks = self.leader_broadcast_prepare(&follower_list).await;
-        let result: String;
+        let mut result: String;
         let message: &str;
 
         if acks >= majority {
-            result = self.store.process_request(&req.unwrap());
+            let operation = req.unwrap();
+            result = self.store.process_request(&operation);
+
+            // TODO: Implement
+            // if result.is_empty() {
+            //     result = self.get_from_cluster(&operation.key).await.expect("Failed to get from cluster");
+            // }
 
             if self.ec_active {
                 let encoded_shard = self.ec.encode(&payload);
+                let kv = BinKV {
+                    key: operation.key,
+                    value: encoded_shard[0].clone(),
+                };
+                let _ = self.store.persist_request_ec(&operation.op_type, &kv).await;
+
                 acks = self
                     .leader_broadcast_accept_ec(&follower_list, &encoded_shard)
                     .await;
