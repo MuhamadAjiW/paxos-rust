@@ -33,7 +33,7 @@ This project is a simple Paxos-based distributed system implemented in Rust usin
 The load balancer listens for client requests and forwards them to the leader or followers.
 
 ```bash
-cargo run -- load_balancer
+cargo run -- load_balancer 127.0.0.1:8000
 ```
 
 ### Step 2: Start the Leader
@@ -56,11 +56,18 @@ cargo run -- follower 127.0.0.1:8082 127.0.0.1:8080 127.0.0.1:8000
 cargo run -- follower 127.0.0.1:8083 127.0.0.1:8080 127.0.0.1:8000
 ```
 
-### Step 4: Send Requests via Netcat
+### Step 4: Send Requests via Netcat or Client
 Use `nc` (Netcat) to simulate a client sending requests to the load balancer:
 
 ```bash
 echo "test message" | nc -u 127.0.0.1 8000
+```
+
+Alternatively, use the client program to send huge chunks of code at once
+
+```bash
+cargo run -- client 127.0.0.1:8000 "SET A " "f" 50
+cargo run -- client 127.0.0.1:8000 "GET A"
 ```
 
 You should see the request being processed by the leader and followers in the logs, and the response will be forwarded back to the client through the load balancer.

@@ -68,7 +68,10 @@ async fn main() -> Result<(), io::Error> {
         }
         "load_balancer" => {
             let mut lb = load_balancer::LoadBalancer::new(); // Declare lb as mutable
-            lb.listen_and_route("127.0.0.1:8000").await; // Call listen_and_route with mutable reference
+            let load_balancer_addr_input = std::env::args()
+                .nth(2)
+                .expect("No load balancer address provided");
+            lb.listen_and_route(&load_balancer_addr_input).await; // Call listen_and_route with mutable reference
         }
         "client" => {
             let load_balancer_addr_input = std::env::args()
