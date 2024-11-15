@@ -2,6 +2,7 @@ use std::{
     collections::HashMap,
     io::{self},
     time::Duration,
+    vec,
 };
 
 use bincode::{deserialize, serialize};
@@ -102,20 +103,56 @@ impl Store {
     pub async fn get_from_wal(&self, key: &str) -> Result<Option<Vec<u8>>, io::Error> {
         let wal_file = File::open(&self.wal_path).await?;
         let mut reader = BufReader::new(wal_file);
-        let mut buffer = Vec::new();
-
         let mut value: Option<Vec<u8>> = None;
 
-        while reader.read_to_end(&mut buffer).await? > 0 {
-            let operation = &buffer[..3];
-            let kv_data = &buffer[3..];
+        // while reader.read_to_end(&mut buffer).await? > 0 {
+        //     let operation = &buffer[..3];
+        //     let kv_data = &buffer[3..];
 
-            let kv: BinKV = deserialize(kv_data).unwrap();
+        //     let kv: BinKV = deserialize(kv_data).unwrap();
+
+        //     if kv.key == key {
+        //         if operation == b"SET" {
+        //             value = Some(kv.value);
+        //         } else if operation == b"REM" {
+        //             value = None;
+        //         }
+        //     }
+        // }
+
+        loop {
+            let mut op_buf = [0; 3];
+            if reader.read_exact(&mut op_buf).await.is_err() {
+                break;
+            }
+
+            let mut key_len_buf = [0; 8];
+            reader.read_exact(&mut key_len_buf).await?;
+            let key_len = usize::from_le_bytes(key_len_buf);
+
+            let mut key_buf = vec![0; key_len];
+            reader.read_exact(&mut key_buf).await?;
+
+            let mut value_len_buf = [0; 8];
+            reader.read_exact(&mut value_len_buf).await?;
+            let value_len = usize::from_le_bytes(value_len_buf);
+
+            let mut value_buf = vec![0; value_len];
+            reader.read_exact(&mut value_buf).await?;
+
+            let mut kv_buf: Vec<u8> = Vec::with_capacity(8 + key_len + 8 + value_len);
+            kv_buf.extend(&key_len_buf);
+            kv_buf.extend(&key_buf);
+            kv_buf.extend(&value_len_buf);
+            kv_buf.extend(&value_buf);
+
+            println!("kv_buf: {:?}", kv_buf);
+            let kv: BinKV = deserialize(&kv_buf).unwrap();
 
             if kv.key == key {
-                if operation == b"SET" {
+                if &op_buf == b"SET" {
                     value = Some(kv.value);
-                } else if operation == b"REM" {
+                } else if &op_buf == b"DEL" {
                     value = None;
                 }
             }
@@ -135,6 +172,7 @@ impl Store {
             .await?;
 
         let encoded = serialize(&operation_ec.kv).unwrap();
+        println!("serialized data: {:?}", encoded);
         wal.write_all(&encoded).await?;
         wal.flush().await?;
 
