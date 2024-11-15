@@ -1,9 +1,10 @@
-use std::{thread::sleep, time::Duration};
+use std::{io, thread::sleep, time::Duration};
 
 use crate::{
+    base_libs::operation::OperationType,
     classes::node::Node,
     network::send_message,
-    types::{FollowerRegistration, PaxosMessage},
+    types::{FollowerRegistrationReply, FollowerRegistrationRequest, PaxosMessage},
 };
 
 use super::operation::Operation;
@@ -16,9 +17,10 @@ impl Node {
         let load_balancer_addr = &self.load_balancer_address.to_string() as &str;
 
         // Register with the leader
-        let registration_message = PaxosMessage::FollowerRegister(FollowerRegistration {
-            follower_addr: follower_addr.to_string(),
-        });
+        let registration_message =
+            PaxosMessage::FollowerRegisterRequest(FollowerRegistrationRequest {
+                follower_addr: follower_addr.to_string(),
+            });
         send_message(&self.socket, registration_message, leader_addr)
             .await
             .unwrap();
@@ -67,16 +69,19 @@ impl Node {
         println!("Follower acknowledged request ID: {}", request_id);
     }
     pub async fn follower_handle_leader_accepted(
-        &self,
+        &mut self,
         src_addr: &String,
         request_id: u64,
         operation: &Operation,
-    ) {
+    ) -> Result<(), io::Error> {
         let leader_addr = &self.leader_address.to_string() as &str;
         if src_addr != leader_addr {
             println!("Follower received request message from not a leader");
-            return;
+            return Ok(());
         }
+
+        self.request_id = request_id;
+        self.store.persist_request_ec(operation).await?;
 
         println!(
             "Follower received accept message from leader:\nKey: {}, Shard: {:?}",
@@ -85,35 +90,95 @@ impl Node {
         let ack = PaxosMessage::FollowerAck { request_id };
         send_message(&self.socket, ack, &leader_addr).await.unwrap();
         println!("Follower acknowledged request ID: {}", request_id);
+
+        Ok(())
     }
     pub async fn follower_handle_client_request(
-        &self,
+        &mut self,
         src_addr: &String,
         request_id: u64,
         payload: &Vec<u8>,
+    ) -> Result<(), io::Error> {
+        let leader_addr = &self.leader_address.to_string() as &str;
+        let mut result: String;
+        let message: &str;
+
+        println!("Follower received client request.");
+        let req = Operation::parse(payload);
+        if matches!(req, None) {
+            println!("Request was invalid, dropping request");
+            return Ok(());
+        }
+        let operation = req.unwrap();
+
+        match operation.op_type {
+            OperationType::SET | OperationType::DELETE => {
+                println!("Forwarding to leader.");
+                send_message(
+                    &self.socket,
+                    PaxosMessage::ClientRequest {
+                        request_id,
+                        payload: payload.clone(),
+                    },
+                    leader_addr,
+                )
+                .await
+                .unwrap();
+
+                return Ok(());
+            }
+            _ => {
+                message = "Request is handled by follower";
+                result = self.store.process_request(&operation);
+                if result.is_empty() {
+                    result = self
+                        .get_from_cluster(&operation.kv.key)
+                        .await
+                        .expect("Failed to get data from cluster");
+                }
+
+                let response = format!(
+                    "Request ID: {}\nMessage: {}\nReply: {}.",
+                    self.request_id, message, result
+                );
+                self.socket
+                    .send_to(response.as_bytes(), src_addr)
+                    .await
+                    .unwrap();
+
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn follower_handle_follower_register_reply(
+        &mut self,
+        src_addr: &String,
+        follower: &FollowerRegistrationReply,
     ) {
         let leader_addr = &self.leader_address.to_string() as &str;
-        if src_addr != leader_addr {
-            println!("Follower received client request. Forwarding to leader.");
-            send_message(
-                &self.socket,
-                PaxosMessage::ClientRequest {
-                    request_id,
-                    payload: payload.clone(),
-                },
-                leader_addr,
-            )
-            .await
-            .unwrap();
+        println!("Follower received leader data {}", src_addr);
+
+        let mut followers_guard = self.cluster_list.lock().unwrap();
+        *followers_guard = follower.follower_list.clone();
+
+        if self.cluster_index == std::usize::MAX {
+            self.cluster_index = follower.index;
         }
+
+        let ack = PaxosMessage::FollowerAck {
+            request_id: self.cluster_index as u64,
+        };
+        send_message(&self.socket, ack, &leader_addr).await.unwrap();
+        println!("Acknowledged follower with given index: {}", follower.index);
     }
 
     // _TODO: handle false message
     pub async fn follower_handle_follower_ack(&self, _src_addr: &String, _request_id: u64) {}
-    pub async fn follower_handle_follower_register(
+    pub async fn follower_handle_follower_register_request(
         &self,
         _src_addr: &String,
-        _follower: &FollowerRegistration,
+        _follower: &FollowerRegistrationRequest,
     ) {
     }
 }

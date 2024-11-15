@@ -3,8 +3,14 @@ use serde::{Deserialize, Serialize};
 use crate::base_libs::operation::Operation;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FollowerRegistration {
+pub struct FollowerRegistrationRequest {
     pub follower_addr: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FollowerRegistrationReply {
+    pub follower_list: Vec<String>,
+    pub index: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -20,7 +26,8 @@ pub enum PaxosMessage {
     FollowerAck {
         request_id: u64,
     },
-    FollowerRegister(FollowerRegistration),
+    FollowerRegisterRequest(FollowerRegistrationRequest),
+    FollowerRegisterReply(FollowerRegistrationReply),
 
     // Client requests
     ClientRequest {

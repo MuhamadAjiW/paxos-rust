@@ -1,5 +1,8 @@
-use crate::{classes::node::Node, types::FollowerRegistration};
-use std::{fmt, u64};
+use crate::{
+    classes::node::Node,
+    types::{FollowerRegistrationReply, FollowerRegistrationRequest},
+};
+use std::{fmt, io, u64};
 
 use super::operation::Operation;
 
@@ -17,7 +20,6 @@ impl fmt::Display for PaxosState {
     }
 }
 
-// _TODO: Implement handlers
 // ---Node Commands---
 impl Node {
     pub async fn handle_leader_request(&self, src_addr: &String, request_id: u64) {
@@ -33,28 +35,30 @@ impl Node {
         }
     }
     pub async fn handle_leader_accepted(
-        &self,
+        &mut self,
         src_addr: &String,
         request_id: u64,
         operation: &Operation,
-    ) {
+    ) -> Result<(), io::Error> {
         match self.state {
             PaxosState::Follower => {
                 self.follower_handle_leader_accepted(src_addr, request_id, operation)
-                    .await
+                    .await?
             }
             PaxosState::Leader => {
                 self.leader_handle_leader_accepted(src_addr, request_id, operation)
                     .await
             }
         }
+
+        Ok(())
     }
     pub async fn handle_client_request(
         &mut self,
         src_addr: &String,
         request_id: u64,
         payload: &Vec<u8>,
-    ) {
+    ) -> Result<(), io::Error> {
         match self.state {
             PaxosState::Follower => {
                 self.follower_handle_client_request(src_addr, request_id, payload)
@@ -75,17 +79,36 @@ impl Node {
             PaxosState::Leader => self.leader_handle_follower_ack(src_addr, request_id).await,
         }
     }
-    pub async fn handle_follower_register(
+    pub async fn handle_follower_register_request(
         &self,
         src_addr: &String,
-        follower: &FollowerRegistration,
+        follower: &FollowerRegistrationRequest,
     ) {
         match self.state {
             PaxosState::Follower => {
-                self.follower_handle_follower_register(src_addr, follower)
+                self.follower_handle_follower_register_request(&src_addr, &follower)
                     .await
             }
-            PaxosState::Leader => self.leader_handle_follower_register(follower).await,
+            PaxosState::Leader => {
+                self.leader_handle_follower_register_request(&follower)
+                    .await
+            }
+        }
+    }
+    pub async fn handle_follower_register_reply(
+        &mut self,
+        src_addr: &String,
+        follower: &FollowerRegistrationReply,
+    ) {
+        match self.state {
+            PaxosState::Follower => {
+                self.follower_handle_follower_register_reply(&src_addr, &follower)
+                    .await
+            }
+            PaxosState::Leader => {
+                self.leader_handle_follower_register_reply(&src_addr, &follower)
+                    .await
+            }
         }
     }
 }

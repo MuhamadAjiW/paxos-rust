@@ -1,3 +1,5 @@
+use std::io;
+
 use base_libs::{address::Address, paxos::PaxosState};
 use classes::node::Node;
 
@@ -8,7 +10,7 @@ mod network;
 mod types;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), io::Error> {
     let role = std::env::args().nth(1).expect("No role provided");
     let shard_count = 4;
     let parity_count = 2;
@@ -29,7 +31,7 @@ async fn main() {
         )
         .await;
 
-        node.run().await;
+        node.run().await?;
     } else if role == "follower" {
         let follower_addr_input = std::env::args()
             .nth(2)
@@ -53,11 +55,13 @@ async fn main() {
         )
         .await;
 
-        node.run().await;
+        node.run().await?;
     } else if role == "load_balancer" {
         let mut lb = load_balancer::LoadBalancer::new(); // Declare lb as mutable
         lb.listen_and_route("127.0.0.1:8000").await; // Call listen_and_route with mutable reference
     } else {
         panic!("Invalid role! Use 'leader', 'follower', or 'load_balancer'.");
     }
+
+    Ok(())
 }

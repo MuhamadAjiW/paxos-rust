@@ -1,8 +1,8 @@
 use reed_solomon_erasure::{galois_8::Field, ReedSolomon};
 
 pub struct ECService {
-    shard_count: usize,
-    parity_count: usize,
+    pub shard_count: usize,
+    pub parity_count: usize,
     reed_solomon: ReedSolomon<Field>,
 }
 

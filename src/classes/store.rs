@@ -26,10 +26,10 @@ pub struct Store {
 }
 
 impl Store {
-    pub fn new() -> Self {
+    pub fn new(wal_path: &String) -> Self {
         return Store {
             map: HashMap::new(),
-            wal_path: "./wal.ignore".to_string(),
+            wal_path: wal_path.clone(),
         };
     }
 
@@ -45,7 +45,6 @@ impl Store {
         return self.map.remove(key).unwrap_or("".to_string());
     }
 
-    // _TODO: Persistent log storage
     pub fn process_request(&mut self, request: &Operation) -> String {
         let response;
 
@@ -83,7 +82,6 @@ impl Store {
         response
     }
 
-    // _TODO: Persistent data inside files
     pub async fn persist_request_ec(&mut self, operation_ec: &Operation) -> Result<(), io::Error> {
         match operation_ec.op_type {
             OperationType::SET | OperationType::DELETE => {
@@ -100,6 +98,7 @@ impl Store {
     //     file.write_all(&encoded).unwrap();
     // }
 
+    // _TODO: Fetching data from files
     pub async fn get_from_wal(&self, key: &str) -> Result<Option<Vec<u8>>, io::Error> {
         let wal_file = File::open(&self.wal_path).await?;
         let mut reader = BufReader::new(wal_file);
@@ -145,7 +144,7 @@ impl Store {
 
 impl Node {
     pub async fn get_from_cluster(
-        &self,
+        &mut self,
         key: &String,
     ) -> Result<String, reed_solomon_erasure::Error> {
         let mut result: String = String::new();
@@ -156,16 +155,15 @@ impl Node {
                     followers_guard.iter().cloned().collect()
                 };
 
-                // _TODO: base on index
-                let mut recovery: Vec<Option<Vec<u8>>> = vec![Some(value)];
-                let mut remote_shards: Vec<Option<Vec<u8>>> =
-                    self.broadcast_get_value(&follower_list, key).await;
-                recovery.append(&mut remote_shards);
+                let mut recovery: Vec<Option<Vec<u8>>> = self
+                    .broadcast_get_value(&follower_list, &Some(value), key)
+                    .await;
 
                 self.ec.reconstruct(&mut recovery)?;
 
                 result = recovery
                     .iter()
+                    .take(self.ec.shard_count)
                     .filter_map(|opt| opt.as_ref().map(|v| String::from_utf8(v.clone()).unwrap()))
                     .collect::<Vec<String>>()
                     .join("");
@@ -178,21 +176,46 @@ impl Node {
             }
         }
 
+        self.store.set(key, &result);
+
         Ok(result)
     }
 
-    // TODO: Implement
-    pub async fn handle_recovery_request(&self, _key: &str) {}
+    pub async fn handle_recovery_request(&self, src_addr: &String, key: &str) {
+        match self.store.get_from_wal(key).await {
+            Ok(Some(value)) => {
+                // Send the data to the requestor
+                send_message(
+                    &self.socket,
+                    PaxosMessage::RecoveryReply { payload: value },
+                    &src_addr,
+                )
+                .await
+                .unwrap();
+                println!("Sent data request to follower at {}", src_addr);
+            }
+            Ok(None) => {
+                println!("No value found");
+            }
+            Err(e) => {
+                eprintln!("Error while reading from WAL: {}", e);
+            }
+        }
+    }
 
-    // TODO: Implement
     async fn broadcast_get_value(
         &self,
         follower_list: &Vec<String>,
+        own_shard: &Option<Vec<u8>>,
         key: &str,
     ) -> Vec<Option<Vec<u8>>> {
-        // let mut acks = 0;
-
+        let mut recovery_shards: Vec<Option<Vec<u8>>> = vec![];
         for follower_addr in follower_list {
+            if follower_addr == self.address.to_string().as_str() {
+                recovery_shards.push(own_shard.clone());
+                continue;
+            }
+
             // Send the request to the follower
             send_message(
                 &self.socket,
@@ -203,37 +226,30 @@ impl Node {
             )
             .await
             .unwrap();
-            println!(
-                "Leader broadcasted request to follower at {}",
-                follower_addr
-            );
+            println!("Broadcasted request to follower at {}", follower_addr);
 
-            // TODO: Should not be blocking, use state management inside the class instead
+            // _TODO: Should not be blocking, use state management inside the class instead
+            // Would need arrangement if not blocking
             // Wait for acknowledgment with timeout (ex. 2 seconds)
             match timeout(Duration::from_secs(2), receive_message(&self.socket)).await {
                 Ok(Ok((ack, _))) => {
-                    if let PaxosMessage::RecoveryReply { .. } = ack {
-                        // acks += 1;
-                        println!(
-                            "Leader received acknowledgment from follower at {}",
-                            follower_addr
-                        );
+                    if let PaxosMessage::RecoveryReply { payload } = ack {
+                        println!("Received acknowledgment from {}", follower_addr);
+                        recovery_shards.push(Some(payload));
                     }
                 }
                 Ok(Err(e)) => {
                     println!(
-                        "Error receiving acknowledgment from follower at {}: {}",
+                        "Error receiving acknowledgment from {}: {}",
                         follower_addr, e
                     );
                 }
                 Err(_) => {
-                    println!(
-                        "Timeout waiting for acknowledgment from follower at {}",
-                        follower_addr
-                    );
+                    println!("Timeout waiting for acknowledgment from {}", follower_addr);
                 }
             }
         }
-        vec![]
+
+        recovery_shards
     }
 }
