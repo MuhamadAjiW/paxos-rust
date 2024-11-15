@@ -83,6 +83,10 @@ impl Node {
         self.request_id = request_id;
         self.store.persist_request_ec(operation).await?;
 
+        if !self.store.get(&operation.kv.key).is_empty() {
+            self.store.remove(&operation.kv.key);
+        }
+
         println!(
             "Follower received accept message from leader:\nKey: {}, Shard: {:?}",
             operation.kv.key, operation.kv.value
