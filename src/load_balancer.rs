@@ -59,7 +59,7 @@ impl LoadBalancer {
             listen_addr
         );
 
-        let mut buf = vec![0; 1024];
+        let mut buf = vec![0; 65536];
 
         loop {
             let (size, client_addr) = socket.recv_from(&mut buf).await.unwrap();
@@ -101,7 +101,7 @@ impl LoadBalancer {
                     println!("Load balancer forwarded request to {}", target);
 
                     // Wait for leader response and forward it to the client
-                    let mut buf = vec![0; 1024];
+                    let mut buf = vec![0; 65536];
                     let (size, src_addr) = socket.recv_from(&mut buf).await.unwrap();
                     let response = String::from_utf8_lossy(&buf[..size]).to_string();
                     println!(

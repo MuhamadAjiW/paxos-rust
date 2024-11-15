@@ -101,7 +101,7 @@ async fn main() -> Result<(), io::Error> {
                 .expect("Failed to bind socket");
             socket.send_to(&data, load_balancer_addr_input).await?;
 
-            let mut buf = [0; 1024];
+            let mut buf = [0; 65536];
             let (size, client_addr) = socket.recv_from(&mut buf).await.unwrap();
             let message = String::from_utf8_lossy(&buf[..size]).to_string();
             println!("Client received reply from {}: {}", client_addr, message);

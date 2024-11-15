@@ -10,7 +10,7 @@ pub async fn send_message(socket: &UdpSocket, message: PaxosMessage, addr: &str)
 }
 
 pub async fn receive_message(socket: &UdpSocket) -> io::Result<(PaxosMessage, String)> {
-    let mut buffer = vec![0; 1024];
+    let mut buffer = vec![0; 65536];
     let (size, src) = socket.recv_from(&mut buffer).await?;
     let message: PaxosMessage = bincode::deserialize(&buffer[..size]).unwrap();
     Ok((message, src.to_string()))
