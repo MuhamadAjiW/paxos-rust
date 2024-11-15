@@ -83,7 +83,7 @@ impl Operation {
                     op_type: OperationType::DELETE,
                     kv: BinKV {
                         key: key.to_string(),
-                        value: vec![],
+                        value: vec![0; 1],
                     },
                 })
             }
