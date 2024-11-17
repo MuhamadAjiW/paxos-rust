@@ -69,6 +69,7 @@ function Followers {
     Write-Host "Starting $Size followers"
     for ($i = 0; $i -lt $Size; $i++) {
         $nPort = $Port + $i
+        Start-Sleep -Seconds 1
         Follower -Addr $Addr -Port $nPort -LeaderAddr $LeaderAddr -LBAddr $LBAddr
     }
 }
@@ -139,7 +140,9 @@ function RunAll {
         }
     }
 
-    # LoadBalancer -Addr ${Addr} -Port ${LBPort}
-    # Leader -Addr ${Addr} -LBAddr "${Addr}:${LBPort}" -Port ${LeaderPort}
+    LoadBalancer -Addr ${Addr} -Port ${LBPort}
+    Start-Sleep -Seconds 1
+    Leader -Addr ${Addr} -LBAddr "${Addr}:${LBPort}" -Port ${LeaderPort}
+    Start-Sleep -Seconds 1
     Followers -Addr ${Addr} -LeaderAddr "${Addr}:${LeaderPort}" -LBAddr "${Addr}:${LBPort}" -Port ${FollowerPort}
 }
