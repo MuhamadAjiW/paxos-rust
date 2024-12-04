@@ -13,7 +13,7 @@ mod types;
 #[tokio::main]
 async fn main() -> Result<(), io::Error> {
     let role = std::env::args().nth(1).expect("No role provided");
-    let shard_count = 2;
+    let shard_count = 3;
     let parity_count = 1;
     let ec_active = true;
 
