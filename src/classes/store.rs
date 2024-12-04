@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     io::{self},
+    sync::Arc,
     time::Duration,
     vec,
 };
@@ -9,6 +10,7 @@ use bincode::{deserialize, serialize};
 use tokio::{
     fs::{File, OpenOptions},
     io::{AsyncReadExt, AsyncWriteExt, BufReader},
+    task::JoinSet,
     time::timeout,
 };
 
@@ -104,21 +106,6 @@ impl Store {
         let wal_file = File::open(&self.wal_path).await?;
         let mut reader = BufReader::new(wal_file);
         let mut value: Option<Vec<u8>> = None;
-
-        // while reader.read_to_end(&mut buffer).await? > 0 {
-        //     let operation = &buffer[..3];
-        //     let kv_data = &buffer[3..];
-
-        //     let kv: BinKV = deserialize(kv_data).unwrap();
-
-        //     if kv.key == key {
-        //         if operation == b"SET" {
-        //             value = Some(kv.value);
-        //         } else if operation == b"REM" {
-        //             value = None;
-        //         }
-        //     }
-        // }
 
         loop {
             let mut op_buf = [0; 3];
@@ -225,7 +212,10 @@ impl Node {
                 // Send the data to the requestor
                 send_message(
                     &self.socket,
-                    PaxosMessage::RecoveryReply { payload: value },
+                    PaxosMessage::RecoveryReply {
+                        index: self.cluster_index,
+                        payload: value,
+                    },
                     &src_addr,
                 )
                 .await
@@ -247,44 +237,67 @@ impl Node {
         own_shard: &Option<Vec<u8>>,
         key: &str,
     ) -> Vec<Option<Vec<u8>>> {
-        let mut recovery_shards: Vec<Option<Vec<u8>>> = vec![];
-        for follower_addr in follower_list {
-            if follower_addr == self.address.to_string().as_str() {
-                recovery_shards.push(own_shard.clone());
-                continue;
-            }
+        let mut recovery_shards: Vec<Option<Vec<u8>>> =
+            vec![None; self.ec.shard_count + self.ec.parity_count];
+        recovery_shards[self.cluster_index] = own_shard.clone();
 
-            // Send the request to the follower
-            send_message(
-                &self.socket,
-                PaxosMessage::RecoveryRequest {
-                    key: key.to_string(),
-                },
-                follower_addr,
-            )
-            .await
-            .unwrap();
-            println!("Broadcasted request to follower at {}", follower_addr);
+        let mut tasks = JoinSet::new();
+        let size = follower_list.len();
 
-            // _TODO: Should not be blocking, use state management inside the class instead
-            // Would need arrangement if not blocking
-            // Wait for acknowledgment with timeout (ex. 2 seconds)
-            match timeout(Duration::from_secs(2), receive_message(&self.socket)).await {
-                Ok(Ok((ack, _))) => {
-                    if let PaxosMessage::RecoveryReply { payload } = ack {
-                        println!("Received acknowledgment from {}", follower_addr);
-                        recovery_shards.push(Some(payload));
+        for follower_addr in follower_list.iter() {
+            let socket_ = Arc::clone(&self.socket);
+            let key = key.to_string();
+            let follower_addr = follower_addr.clone();
+
+            tasks.spawn(async move {
+                // Send the request to the follower
+                if let Err(_e) = send_message(
+                    &socket_,
+                    PaxosMessage::RecoveryRequest {
+                        key: key.to_string(),
+                    },
+                    follower_addr.as_str(),
+                )
+                .await
+                {
+                    println!(
+                        "Failed to broadcast request to follower at {}",
+                        follower_addr
+                    );
+                    return None;
+                }
+                println!("Broadcasted request to follower at {}", follower_addr);
+
+                // Wait for acknowledgment with timeout (ex. 2 seconds)
+                match timeout(Duration::from_secs(2), receive_message(&socket_)).await {
+                    Ok(Ok((ack, _))) => {
+                        if let PaxosMessage::RecoveryReply { index, payload } = ack {
+                            println!("Received acknowledgment from {} ({})", follower_addr, index);
+                            return Some((index, payload));
+                        }
+                    }
+                    Ok(Err(e)) => {
+                        println!(
+                            "Error receiving acknowledgment from {}: {}",
+                            follower_addr, e
+                        );
+                    }
+                    Err(_) => {
+                        println!("Timeout waiting for acknowledgment from {}", follower_addr);
                     }
                 }
-                Ok(Err(e)) => {
-                    println!(
-                        "Error receiving acknowledgment from {}: {}",
-                        follower_addr, e
-                    );
+                return None;
+            });
+        }
+
+        while let Some(response) = tasks.join_next().await {
+            match response {
+                Ok(Some((index, payload))) => {
+                    if index < size {
+                        recovery_shards[index] = Some(payload);
+                    }
                 }
-                Err(_) => {
-                    println!("Timeout waiting for acknowledgment from {}", follower_addr);
-                }
+                _ => {} // Handle errors or None responses if needed
             }
         }
 

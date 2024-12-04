@@ -16,7 +16,7 @@ use super::{erasure_coding::ECService, store::Store};
 pub struct Node {
     // Base attributes
     pub address: Address,
-    pub socket: UdpSocket,
+    pub socket: Arc<UdpSocket>,
     pub running: bool,
 
     // Paxos related attributes
@@ -43,7 +43,7 @@ impl Node {
         parity_count: usize,
         ec_active: bool,
     ) -> Self {
-        let socket = UdpSocket::bind(address.to_string()).await.unwrap();
+        let socket = Arc::new(UdpSocket::bind(address.to_string()).await.unwrap());
         let running = false;
         let cluster_list = Arc::new(Mutex::new(Vec::new()));
         let cluster_index = std::usize::MAX;
@@ -131,7 +131,10 @@ impl Node {
                 }
 
                 // _TODO: Handle faulty requests
-                PaxosMessage::RecoveryReply { payload: _ } => {}
+                PaxosMessage::RecoveryReply {
+                    index: _,
+                    payload: _,
+                } => {}
             }
         }
 

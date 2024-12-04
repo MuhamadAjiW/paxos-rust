@@ -38,6 +38,7 @@ pub enum PaxosMessage {
         key: String,
     },
     RecoveryReply {
+        index: usize,
         payload: Vec<u8>,
     },
 }
