@@ -28,15 +28,16 @@ use super::node::Node;
 
 pub struct Store {
     map: HashMap<String, String>,
-    wal_path: String,
+    // wal_path: String,
     // sstables: Vec<String>,
 }
 
 impl Store {
-    pub fn new(wal_path: &String) -> Self {
+    // pub fn new(wal_path: &Stringing) -> Self {
+    pub fn new() -> Self {
         return Store {
             map: HashMap::new(),
-            wal_path: wal_path.clone(),
+            // wal_path: wal_path.clone(),
         };
     }
 
@@ -89,10 +90,14 @@ impl Store {
         response
     }
 
-    pub async fn persist_request_ec(&mut self, operation_ec: &Operation) -> Result<(), io::Error> {
+    pub async fn persist_request_ec(
+        &mut self,
+        wal_path: &String,
+        operation_ec: &Operation,
+    ) -> Result<(), io::Error> {
         match operation_ec.op_type {
             OperationType::SET | OperationType::DELETE => {
-                self.write_to_wal(operation_ec).await?;
+                self.write_to_wal(wal_path, operation_ec).await?;
             }
             _ => {}
         }
@@ -106,8 +111,13 @@ impl Store {
     // }
 
     // _TODO: Fetching data from files
-    pub async fn get_from_wal(&self, key: &str) -> Result<Option<Vec<u8>>, io::Error> {
-        let wal_file = File::open(&self.wal_path).await?;
+    // pub async fn get_from_wal(&self, key: &str) -> Result<Option<Vec<u8>>, io::Error> {
+    pub async fn get_from_wal(
+        &self,
+        wal_path: &String,
+        key: &str,
+    ) -> Result<Option<Vec<u8>>, io::Error> {
+        let wal_file = File::open("./log/".to_owned() + wal_path).await?;
         let mut reader = BufReader::new(wal_file);
         let mut value: Option<Vec<u8>> = None;
 
@@ -137,7 +147,7 @@ impl Store {
             kv_buf.extend(&value_len_buf);
             kv_buf.extend(&value_buf);
 
-            println!("kv_buf: {:?}", kv_buf);
+            // println!("kv_buf: {:?}", kv_buf);
             let kv: BinKV = deserialize(&kv_buf).unwrap();
 
             if kv.key == key {
@@ -152,18 +162,22 @@ impl Store {
         Ok(value)
     }
 
-    pub async fn write_to_wal(&self, operation_ec: &Operation) -> Result<(), io::Error> {
+    pub async fn write_to_wal(
+        &self,
+        wal_path: &String,
+        operation_ec: &Operation,
+    ) -> Result<(), io::Error> {
         let mut wal = OpenOptions::new()
-            .append(true)
+            .write(true)
             .create(true)
-            .open(&self.wal_path)
+            .truncate(true)
+            .open("./log/".to_owned() + wal_path)
             .await?;
 
         wal.write_all(operation_ec.op_type.to_string().as_bytes())
             .await?;
 
         let encoded = serialize(&operation_ec.kv).unwrap();
-        println!("serialized data: {:?}", encoded);
         wal.write_all(&encoded).await?;
         wal.flush().await?;
 
@@ -174,10 +188,11 @@ impl Store {
 impl Node {
     pub async fn get_from_cluster(
         &mut self,
+        wal_path: &String,
         key: &String,
     ) -> Result<String, reed_solomon_erasure::Error> {
         let mut result: String = String::new();
-        match self.store.get_from_wal(key).await {
+        match self.store.get_from_wal(wal_path, key).await {
             Ok(Some(value)) => {
                 let follower_list: Vec<String> = {
                     let followers_guard = self.cluster_list.lock().unwrap();
@@ -192,7 +207,7 @@ impl Node {
                     println!("Shards: {:?}", ele.unwrap_or_default());
                 }
 
-                // self.ec.reconstruct(&mut recovery)?;
+                self.ec.reconstruct(&mut recovery)?;
 
                 result = recovery
                     .iter()
@@ -214,8 +229,8 @@ impl Node {
         Ok(result)
     }
 
-    pub async fn handle_recovery_request(&self, src_addr: &String, key: &str) {
-        match self.store.get_from_wal(key).await {
+    pub async fn handle_recovery_request(&self, src_addr: &String, wal_path: &String, key: &str) {
+        match self.store.get_from_wal(wal_path, key).await {
             Ok(Some(value)) => {
                 // Send the data to the requestor
                 send_message(
@@ -256,8 +271,6 @@ impl Node {
         let required_count = self.ec.shard_count;
         let notify = Arc::new(Notify::new());
 
-        println!("Size is : {}; Required is: {}", size, required_count);
-
         let mut tasks = JoinSet::new();
 
         for follower_addr in follower_list.iter() {
@@ -282,12 +295,12 @@ impl Node {
                     );
                     return;
                 }
-                println!("Broadcasted request to follower at {}", follower_addr);
+                // println!("Broadcasted request to follower at {}", follower_addr);
 
                 match timeout(Duration::from_secs(2), receive_message(&socket)).await {
                     Ok(Ok((ack, _))) => {
                         if let PaxosMessage::RecoveryReply { index, payload } = ack {
-                            println!("Received acknowledgment from {} ({})", follower_addr, index);
+                            // println!("Received acknowledgment from {} ({})", follower_addr, index);
 
                             if index < size {
                                 let mut shards = recovery_shards.write().await;
@@ -312,8 +325,6 @@ impl Node {
                 }
             });
         }
-
-        // println!("The crash has not happened here");
 
         // Process tasks and exit early if enough responses are gathered
         while response_count.load(Ordering::SeqCst) < required_count {

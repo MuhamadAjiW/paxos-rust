@@ -81,7 +81,18 @@ impl Node {
         }
 
         self.request_id = request_id;
-        self.store.persist_request_ec(operation).await?;
+        self.store
+            .persist_request_ec(
+                &("".to_string()
+                    + &operation.kv.key
+                    + ".."
+                    + &self.address.ip.to_string()
+                    + ".."
+                    + &self.address.port.to_string()
+                    + ".log"),
+                operation,
+            )
+            .await?;
 
         if !self.store.get(&operation.kv.key).is_empty() {
             self.store.remove(&operation.kv.key);
@@ -137,7 +148,16 @@ impl Node {
                 if result.is_empty() {
                     println!("Fetching data from cluster");
                     result = self
-                        .get_from_cluster(&operation.kv.key)
+                        .get_from_cluster(
+                            &("".to_string()
+                                + &operation.kv.key
+                                + ".."
+                                + &self.address.ip.to_string()
+                                + ".."
+                                + &self.address.port.to_string()
+                                + ".log"),
+                            &operation.kv.key,
+                        )
                         .await
                         .expect("Failed to get data from cluster");
                     println!("Fetching data from done");

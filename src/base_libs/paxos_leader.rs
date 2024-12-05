@@ -1,6 +1,9 @@
 use std::{io, sync::Arc, time::Duration};
 
-use tokio::{task::JoinSet, time::timeout};
+use tokio::{
+    task::JoinSet,
+    time::{self, timeout},
+};
 
 use crate::{
     base_libs::operation::{BinKV, Operation, OperationType},
@@ -52,16 +55,16 @@ impl Node {
                     );
                     return None;
                 }
-                println!("Broadcasted request to follower at {}", follower_addr);
+                // println!("Broadcasted request to follower at {}", follower_addr);
 
                 // Wait for acknowledgment with timeout (ex. 2 seconds)
                 match timeout(Duration::from_secs(2), receive_message(&socket)).await {
                     Ok(Ok((ack, _))) => {
                         if let PaxosMessage::FollowerAck { .. } = ack {
-                            println!(
-                                "Leader received acknowledgment from follower at {}",
-                                follower_addr
-                            );
+                            // println!(
+                            //     "Leader received acknowledgment from follower at {}",
+                            //     follower_addr
+                            // );
                             return Some(1);
                         }
                     }
@@ -124,19 +127,19 @@ impl Node {
                 )
                 .await
                 .unwrap();
-                println!(
-                    "Leader broadcasted request to follower at {}",
-                    follower_addr
-                );
+                // println!(
+                //     "Leader broadcasted request to follower at {}",
+                //     follower_addr
+                // );
 
                 // Wait for acknowledgment with timeout (ex. 2 seconds)
                 match timeout(Duration::from_secs(2), receive_message(&socket)).await {
                     Ok(Ok((ack, _))) => {
                         if let PaxosMessage::FollowerAck { .. } = ack {
-                            println!(
-                                "Leader received acknowledgment from follower at {}",
-                                follower_addr
-                            );
+                            // println!(
+                            //     "Leader received acknowledgment from follower at {}",
+                            //     follower_addr
+                            // );
                             return Some(1);
                         }
                     }
@@ -213,19 +216,19 @@ impl Node {
                 )
                 .await
                 .unwrap();
-                println!(
-                    "Leader broadcasted request to follower at {}",
-                    follower_addr
-                );
+                // println!(
+                //     "Leader broadcasted request to follower at {}",
+                //     follower_addr
+                // );
 
                 // Wait for acknowledgment with timeout (ex. 2 seconds)
                 match timeout(Duration::from_secs(2), receive_message(&socket)).await {
                     Ok(Ok((ack, _))) => {
                         if let PaxosMessage::FollowerAck { .. } = ack {
-                            println!(
-                                "Leader received acknowledgment from follower at {}",
-                                follower_addr
-                            );
+                            // println!(
+                            //     "Leader received acknowledgment from follower at {}",
+                            //     follower_addr
+                            // );
 
                             return Some(1);
                         }
@@ -294,19 +297,19 @@ impl Node {
                 )
                 .await
                 .unwrap();
-                println!(
-                    "Leader broadcasted request to follower at {}",
-                    follower_addr
-                );
+                // println!(
+                //     "Leader broadcasted request to follower at {}",
+                //     follower_addr
+                // );
 
                 // Wait for acknowledgment with timeout (ex. 2 seconds)
                 match timeout(Duration::from_secs(2), receive_message(&socket)).await {
                     Ok(Ok((ack, _))) => {
                         if let PaxosMessage::FollowerAck { .. } = ack {
-                            println!(
-                                "Leader received acknowledgment from follower at {}",
-                                follower_addr
-                            );
+                            // println!(
+                            //     "Leader received acknowledgment from follower at {}",
+                            //     follower_addr
+                            // );
                             return Some(1);
                         }
                     }
@@ -347,80 +350,114 @@ impl Node {
         payload: &Vec<u8>,
     ) -> Result<(), io::Error> {
         let original_message = String::from_utf8_lossy(&payload).to_string(); // Capture original client message
-        println!(
-            "Leader received request from {}: {}",
-            src_addr, original_message
-        );
-        let req = Operation::parse(payload);
 
+        let req = Operation::parse(payload);
         if matches!(req, None) {
             println!("Request was invalid, dropping request");
             return Ok(());
         }
-
-        let load_balancer_addr = &self.load_balancer_address.to_string() as &str;
-        let initial_request_id = self.request_id;
-
-        let follower_list: Vec<String> = {
-            let followers_guard = self.cluster_list.lock().unwrap();
-            followers_guard.iter().cloned().collect()
-        };
-
-        let majority = follower_list.len() / 2 + 1;
-        let mut acks = self.leader_broadcast_prepare(&follower_list).await;
+        let operation = req.unwrap();
         let mut result: String;
         let message: &str;
+        let initial_request_id = self.request_id;
+        let load_balancer_addr = &self.load_balancer_address.to_string() as &str;
 
-        if acks >= majority {
-            let operation = req.unwrap();
-            result = self.store.process_request(&operation);
+        // Benchmarking variables
+        let mut start = time::Instant::now();
+        let operation_time: time::Duration;
 
-            if result.is_empty() {
-                result = self
-                    .get_from_cluster(&operation.kv.key)
-                    .await
-                    .expect("Failed to get from cluster");
+        match operation.op_type {
+            OperationType::BAD | OperationType::PING => {
+                message = "Request is handled by leader";
+                result = self.store.process_request(&operation);
             }
+            OperationType::GET => {
+                message = "Request is handled by leader";
+                result = self.store.process_request(&operation);
 
-            if matches!(
-                operation.op_type,
-                OperationType::SET | OperationType::DELETE
-            ) {
-                if self.ec_active {
-                    let encoded_shard = self.ec.encode(&operation.kv.value);
-                    self.store
-                        .persist_request_ec(&Operation {
-                            op_type: operation.op_type.clone(),
-                            kv: BinKV {
-                                key: operation.kv.key.clone(),
-                                value: encoded_shard[self.cluster_index].clone(),
-                            },
-                        })
-                        .await?;
-
-                    acks = self
-                        .leader_broadcast_accept_ec(&follower_list, &operation, &encoded_shard)
-                        .await;
-                } else {
-                    acks = self
-                        .leader_broadcast_accept_replication(&follower_list, &operation)
-                        .await;
+                if result.is_empty() {
+                    result = self
+                        .get_from_cluster(
+                            &("".to_string()
+                                + &operation.kv.key
+                                + ".."
+                                + &self.address.ip.to_string()
+                                + ".."
+                                + &self.address.port.to_string()
+                                + ".log"),
+                            &operation.kv.key,
+                        )
+                        .await
+                        .expect("Failed to get from cluster");
                 }
-
-                if acks > majority {
-                    message = "Leader broadcasted the message successfully";
-                } else {
-                    message = "Accept broadcast is not accepted by majority";
-                }
-
-                self.request_id += 1;
-            } else {
-                message = "Leader received the message";
             }
-        } else {
-            result = "Request failed.".to_string();
-            message = "Request broadcast is not accepted by majority";
+            _ => {
+                let follower_list: Vec<String> = {
+                    let followers_guard = self.cluster_list.lock().unwrap();
+                    followers_guard.iter().cloned().collect()
+                };
+
+                let majority = follower_list.len() / 2 + 1;
+                let mut acks = self.leader_broadcast_prepare(&follower_list).await;
+
+                if acks >= majority {
+                    // Benchmarking starts here
+                    start = time::Instant::now();
+
+                    result = self.store.process_request(&operation);
+
+                    if self.ec_active {
+                        let encoded_shard = self.ec.encode(&operation.kv.value);
+                        self.store
+                            .persist_request_ec(
+                                &("".to_string()
+                                    + &operation.kv.key
+                                    + ".."
+                                    + &self.address.ip.to_string()
+                                    + ".."
+                                    + &self.address.port.to_string()
+                                    + ".log"),
+                                &Operation {
+                                    op_type: operation.op_type.clone(),
+                                    kv: BinKV {
+                                        key: operation.kv.key.clone(),
+                                        value: encoded_shard[self.cluster_index].clone(),
+                                    },
+                                },
+                            )
+                            .await?;
+
+                        acks = self
+                            .leader_broadcast_accept_ec(&follower_list, &operation, &encoded_shard)
+                            .await;
+                    } else {
+                        acks = self
+                            .leader_broadcast_accept_replication(&follower_list, &operation)
+                            .await;
+                    }
+
+                    if acks > majority {
+                        message = "Leader broadcasted the message successfully";
+                    } else {
+                        message = "Accept broadcast is not accepted by majority";
+                    }
+
+                    self.request_id += 1;
+                } else {
+                    result = "Request failed.".to_string();
+                    message = "Request broadcast is not accepted by majority";
+                }
+            }
         }
+
+        operation_time = start.elapsed();
+        println!(
+            "{};{};{};{}",
+            operation.kv.value.len(),
+            operation_time.as_secs_f64(),
+            src_addr,
+            &self.request_id
+        );
 
         let response = format!(
             "Request ID: {}\nMessage: {}\nReply: {}.",

@@ -48,8 +48,9 @@ impl Node {
         let cluster_list = Arc::new(Mutex::new(Vec::new()));
         let cluster_index = std::usize::MAX;
 
-        let filename = address.ip.to_string() + ".." + &address.port.to_string() + ".log";
-        let store = Store::new(&filename);
+        // let filename = address.ip.to_string() + ".." + &address.port.to_string() + ".log";
+        // let store = Store::new(&filename);
+        let store = Store::new();
         let request_id = 0;
         let ec = ECService::new(shard_count, parity_count);
 
@@ -127,7 +128,18 @@ impl Node {
                 }
 
                 PaxosMessage::RecoveryRequest { key } => {
-                    self.handle_recovery_request(&src_addr, &key).await
+                    self.handle_recovery_request(
+                        &src_addr,
+                        &("".to_string()
+                            + &key
+                            + ".."
+                            + &self.address.ip.to_string()
+                            + ".."
+                            + &self.address.port.to_string()
+                            + ".log"),
+                        &key,
+                    )
+                    .await
                 }
 
                 // _TODO: Handle faulty requests
