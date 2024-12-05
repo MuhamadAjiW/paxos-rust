@@ -28,7 +28,9 @@ function Follower {
         [string]$Addr,
         [string]$LeaderAddr = "0.0.0.0:8080",
         [string]$LBAddr = "0.0.0.0:8000",
-        [int]$Port = 8081
+        [int]$Port = 8081,
+        [int]$ShardCount = 4,
+        [int]$ParityCount = 2
     )
     if (-not $Addr) {
         $Addr = WifiIP
@@ -37,7 +39,7 @@ function Follower {
         }
     }
     
-    $command = "cargo run -- follower ${Addr}:${Port} ${LeaderAddr} ${LBAddr}"
+    $command = "cargo run -- follower ${Addr}:${Port} ${LeaderAddr} ${LBAddr} ${ShardCount} ${ParityCount}"
     
     Write-Host "Starting follower on ${Addr}:${Port}"
     Write-Host "Command is: ${command}"
@@ -53,11 +55,12 @@ function Follower {
 
 function Followers {
     param (
-        [int]$Size = 3,
         [string]$Addr,
         [string]$LeaderAddr = "0.0.0.0:8080",
         [string]$LBAddr = "0.0.0.0:8000",
-        [int]$Port = 8081
+        [int]$Port = 8081,
+        [int]$ShardCount = 4,
+        [int]$ParityCount = 2
     )
     if (-not $Addr) {
         $Addr = WifiIP
@@ -66,11 +69,12 @@ function Followers {
         }
     }
 
+    $Size = $ShardCount + $ParityCount - 1
     Write-Host "Starting $Size followers"
     for ($i = 0; $i -lt $Size; $i++) {
         $nPort = $Port + $i
         Start-Sleep -Seconds 1
-        Follower -Addr $Addr -Port $nPort -LeaderAddr $LeaderAddr -LBAddr $LBAddr
+        Follower -Addr $Addr -Port $nPort -LeaderAddr $LeaderAddr -LBAddr $LBAddr -ShardCount $ShardCount -ParityCount $ParityCount
     }
 }
 
@@ -78,7 +82,9 @@ function Leader {
     param (
         [string]$Addr,
         [string]$LBAddr = "0.0.0.0:8000",
-        [int]$Port = 8080
+        [int]$Port = 8080,
+        [int]$ShardCount = 4,
+        [int]$ParityCount = 2
     )
     if (-not $Addr) {
         $Addr = WifiIP
@@ -87,7 +93,7 @@ function Leader {
         }
     }
     
-    $command = "cargo run -- leader ${Addr}:${Port} ${LBAddr}"
+    $command = "cargo run -- leader ${Addr}:${Port} ${LBAddr} ${ShardCount} ${ParityCount}"
     
     Write-Host "Starting leader on ${Addr}:${Port}"
     Write-Host "Command is: ${command}"
@@ -127,11 +133,12 @@ function LoadBalancer {
 
 function RunAll {
     param (
-        [int]$Size = 3,
         [string]$Addr,
         [int]$LBPort = 8000,
         [int]$LeaderPort = 8080,
-        [int]$FollowerPort = 8081
+        [int]$FollowerPort = 8081,
+        [int]$ShardCount = 4,
+        [int]$ParityCount = 2    
     )
     if (-not $Addr) {
         $Addr = WifiIP
@@ -144,5 +151,5 @@ function RunAll {
     Start-Sleep -Seconds 1
     Leader -Addr ${Addr} -LBAddr "${Addr}:${LBPort}" -Port ${LeaderPort}
     Start-Sleep -Seconds 1
-    Followers -Addr ${Addr} -LeaderAddr "${Addr}:${LeaderPort}" -LBAddr "${Addr}:${LBPort}" -Port ${FollowerPort}
+    Followers -Addr ${Addr} -LeaderAddr "${Addr}:${LeaderPort}" -LBAddr "${Addr}:${LBPort}" -Port ${FollowerPort} -ShardCount $ShardCount -ParityCount $ParityCount
 }

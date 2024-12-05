@@ -40,20 +40,20 @@ cargo run -- load_balancer 127.0.0.1:8000
 Start the leader node. The leader handles requests and coordinates with the followers.
 
 ```bash
-cargo run -- leader 127.0.0.1:8080 127.0.0.1:8000
+cargo run -- leader <address> <load_balancer> <shard_count> <parity_count>
 ```
 
 ### Step 3: Start the Followers
 You can run multiple followers. Each follower registers with the leader and the load balancer.
 
 ```bash
-cargo run -- follower 127.0.0.1:8081 127.0.0.1:8080 127.0.0.1:8000
+cargo run -- follower <address> <leader_address> <load_balancer> <shard_count> <parity_count>
 ```
 
 Run as many followers as needed by specifying different ports for each:
 ```bash
-cargo run -- follower 127.0.0.1:8082 127.0.0.1:8080 127.0.0.1:8000
-cargo run -- follower 127.0.0.1:8083 127.0.0.1:8080 127.0.0.1:8000
+cargo run -- follower 127.0.0.1:8082 127.0.0.1:8080 127.0.0.1:8000 4 2
+cargo run -- follower 127.0.0.1:8083 127.0.0.1:8080 127.0.0.1:8000 4 2
 ```
 
 ### Step 4: Send Requests via Netcat or Client

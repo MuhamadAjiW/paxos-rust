@@ -13,8 +13,6 @@ mod types;
 #[tokio::main]
 async fn main() -> Result<(), io::Error> {
     let role = std::env::args().nth(1).expect("No role provided");
-    let shard_count = 3;
-    let parity_count = 1;
     let ec_active = true;
 
     match role.as_str() {
@@ -23,6 +21,16 @@ async fn main() -> Result<(), io::Error> {
             let load_balancer_addr_input = std::env::args()
                 .nth(3)
                 .expect("No load balancer address provided");
+            let shard_count = std::env::args()
+                .nth(4)
+                .expect("No shard count provided")
+                .parse()
+                .unwrap();
+            let parity_count = std::env::args()
+                .nth(5)
+                .expect("No parity count provided")
+                .parse()
+                .unwrap();
 
             let address = Address::from_string(&addr_input).unwrap();
             let leader_address = Address::from_string(&addr_input).unwrap();
@@ -49,6 +57,16 @@ async fn main() -> Result<(), io::Error> {
             let load_balancer_addr_input = std::env::args()
                 .nth(4)
                 .expect("No load balancer address provided");
+            let shard_count = std::env::args()
+                .nth(5)
+                .expect("No shard count provided")
+                .parse()
+                .unwrap();
+            let parity_count = std::env::args()
+                .nth(6)
+                .expect("No parity count provided")
+                .parse()
+                .unwrap();
 
             let address = Address::from_string(&follower_addr_input).unwrap();
             let leader_address = Address::from_string(&leader_addr_input).unwrap();

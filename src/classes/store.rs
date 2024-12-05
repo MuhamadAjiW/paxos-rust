@@ -1,7 +1,10 @@
 use std::{
     collections::HashMap,
     io::{self},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
     time::Duration,
     vec,
 };
@@ -10,6 +13,7 @@ use bincode::{deserialize, serialize};
 use tokio::{
     fs::{File, OpenOptions},
     io::{AsyncReadExt, AsyncWriteExt, BufReader},
+    sync::{Notify, RwLock},
     task::JoinSet,
     time::timeout,
 };
@@ -184,7 +188,11 @@ impl Node {
                     .broadcast_get_value(&follower_list, &Some(value), key)
                     .await;
 
-                self.ec.reconstruct(&mut recovery)?;
+                for ele in recovery.clone() {
+                    println!("Shards: {:?}", ele.unwrap_or_default());
+                }
+
+                // self.ec.reconstruct(&mut recovery)?;
 
                 result = recovery
                     .iter()
@@ -237,25 +245,33 @@ impl Node {
         own_shard: &Option<Vec<u8>>,
         key: &str,
     ) -> Vec<Option<Vec<u8>>> {
-        let mut recovery_shards: Vec<Option<Vec<u8>>> =
-            vec![None; self.ec.shard_count + self.ec.parity_count];
-        recovery_shards[self.cluster_index] = own_shard.clone();
+        let recovery_shards = Arc::new(RwLock::new(vec![
+            None;
+            self.ec.shard_count + self.ec.parity_count
+        ]));
+        recovery_shards.write().await[self.cluster_index] = own_shard.clone();
+
+        let size = follower_list.len();
+        let response_count = Arc::new(AtomicUsize::new(1));
+        let required_count = self.ec.shard_count;
+        let notify = Arc::new(Notify::new());
+
+        println!("Size is : {}; Required is: {}", size, required_count);
 
         let mut tasks = JoinSet::new();
-        let size = follower_list.len();
 
         for follower_addr in follower_list.iter() {
             let socket = Arc::clone(&self.socket);
             let key = key.to_string();
             let follower_addr = follower_addr.clone();
+            let notify = Arc::clone(&notify);
+            let recovery_shards = Arc::clone(&recovery_shards);
+            let response_count = Arc::clone(&response_count);
 
             tasks.spawn(async move {
-                // Send the request to the follower
                 if let Err(_e) = send_message(
                     &socket,
-                    PaxosMessage::RecoveryRequest {
-                        key: key.to_string(),
-                    },
+                    PaxosMessage::RecoveryRequest { key },
                     follower_addr.as_str(),
                 )
                 .await
@@ -264,16 +280,24 @@ impl Node {
                         "Failed to broadcast request to follower at {}",
                         follower_addr
                     );
-                    return None;
+                    return;
                 }
                 println!("Broadcasted request to follower at {}", follower_addr);
 
-                // Wait for acknowledgment with timeout (ex. 2 seconds)
                 match timeout(Duration::from_secs(2), receive_message(&socket)).await {
                     Ok(Ok((ack, _))) => {
                         if let PaxosMessage::RecoveryReply { index, payload } = ack {
                             println!("Received acknowledgment from {} ({})", follower_addr, index);
-                            return Some((index, payload));
+
+                            if index < size {
+                                let mut shards = recovery_shards.write().await;
+                                shards[index] = Some(payload);
+
+                                let count = response_count.fetch_add(1, Ordering::SeqCst);
+                                if count >= required_count {
+                                    notify.notify_one();
+                                }
+                            }
                         }
                     }
                     Ok(Err(e)) => {
@@ -286,21 +310,20 @@ impl Node {
                         println!("Timeout waiting for acknowledgment from {}", follower_addr);
                     }
                 }
-                return None;
             });
         }
 
-        while let Some(response) = tasks.join_next().await {
-            match response {
-                Ok(Some((index, payload))) => {
-                    if index < size {
-                        recovery_shards[index] = Some(payload);
-                    }
-                }
-                _ => {} // Handle errors or None responses if needed
+        // println!("The crash has not happened here");
+
+        // Process tasks and exit early if enough responses are gathered
+        while response_count.load(Ordering::SeqCst) < required_count {
+            tokio::select! {
+                Some(_) = tasks.join_next() => {},
+                _ = notify.notified() => break
             }
         }
 
-        recovery_shards
+        let recovery_shards = recovery_shards.read().await;
+        recovery_shards.clone()
     }
 }

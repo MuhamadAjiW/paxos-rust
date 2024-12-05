@@ -135,10 +135,12 @@ impl Node {
                 message = "Request is handled by follower";
                 result = self.store.process_request(&operation);
                 if result.is_empty() {
+                    println!("Fetching data from cluster");
                     result = self
                         .get_from_cluster(&operation.kv.key)
                         .await
                         .expect("Failed to get data from cluster");
+                    println!("Fetching data from done");
                 }
 
                 let response = format!(
