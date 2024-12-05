@@ -1,6 +1,6 @@
-use std::{io, time::Duration};
+use std::{io, sync::Arc, time::Duration};
 
-use tokio::time::timeout;
+use tokio::{task::JoinSet, time::timeout};
 
 use crate::{
     base_libs::operation::{BinKV, Operation, OperationType},
@@ -21,55 +21,77 @@ impl Node {
             return 0;
         }
 
-        let mut acks = 0;
+        let mut acks = 1;
+        let mut tasks = JoinSet::new();
 
-        for follower_addr in follower_list {
+        for follower_addr in follower_list.iter() {
             if follower_addr == self.address.to_string().as_str() {
                 continue;
             }
 
-            // Send the request to the follower
-            send_message(
-                &self.socket,
-                PaxosMessage::FollowerRegisterReply(FollowerRegistrationReply {
-                    follower_list: follower_list.clone(),
-                    index,
-                }),
-                &follower_addr,
-            )
-            .await
-            .unwrap();
-            println!(
-                "Leader broadcasted membership change to follower at {}",
-                follower_addr
-            );
+            let socket = Arc::clone(&self.socket);
+            let index = index.clone();
+            let follower_addr = follower_addr.clone();
+            let follower_list = follower_list.clone();
 
-            // _TODO: Should not be blocking, use state management inside the class instead
-            // Wait for acknowledgment with timeout (ex. 2 seconds)
-            match timeout(Duration::from_secs(2), receive_message(&self.socket)).await {
-                Ok(Ok((ack, _))) => {
-                    if let PaxosMessage::FollowerAck { .. } = ack {
-                        acks += 1;
+            tasks.spawn(async move {
+                // Send the request to the follower
+                if let Err(_e) = send_message(
+                    &socket,
+                    PaxosMessage::FollowerRegisterReply(FollowerRegistrationReply {
+                        follower_list,
+                        index,
+                    }),
+                    follower_addr.as_str(),
+                )
+                .await
+                {
+                    println!(
+                        "Failed to broadcast request to follower at {}",
+                        follower_addr
+                    );
+                    return None;
+                }
+                println!("Broadcasted request to follower at {}", follower_addr);
+
+                // Wait for acknowledgment with timeout (ex. 2 seconds)
+                match timeout(Duration::from_secs(2), receive_message(&socket)).await {
+                    Ok(Ok((ack, _))) => {
+                        if let PaxosMessage::FollowerAck { .. } = ack {
+                            println!(
+                                "Leader received acknowledgment from follower at {}",
+                                follower_addr
+                            );
+                            return Some(1);
+                        }
+                    }
+                    Ok(Err(e)) => {
                         println!(
-                            "Leader received acknowledgment from follower at {}",
+                            "Error receiving acknowledgment from follower at {}: {}",
+                            follower_addr, e
+                        );
+                    }
+                    Err(_) => {
+                        println!(
+                            "Timeout waiting for acknowledgment from follower at {}",
                             follower_addr
                         );
                     }
                 }
-                Ok(Err(e)) => {
-                    println!(
-                        "Error receiving acknowledgment from follower at {}: {}",
-                        follower_addr, e
-                    );
+
+                return Some(0);
+            });
+        }
+
+        while let Some(response) = tasks.join_next().await {
+            match response {
+                Ok(Some(value)) => {
+                    acks += value;
                 }
-                Err(_) => {
-                    println!(
-                        "Timeout waiting for acknowledgment from follower at {}",
-                        follower_addr
-                    );
-                }
+                _ => {} // Handle errors or None responses if needed
             }
         }
+
         acks
     }
 
@@ -80,51 +102,68 @@ impl Node {
         }
 
         let mut acks = 1;
+        let mut tasks = JoinSet::new();
 
-        for follower_addr in follower_list {
+        for follower_addr in follower_list.iter() {
             if follower_addr == self.address.to_string().as_str() {
                 continue;
             }
 
-            // Send the request to the follower
-            send_message(
-                &self.socket,
-                PaxosMessage::LeaderRequest {
-                    request_id: self.request_id,
-                },
-                &follower_addr,
-            )
-            .await
-            .unwrap();
-            println!(
-                "Leader broadcasted request to follower at {}",
-                follower_addr
-            );
+            let socket = Arc::clone(&self.socket);
+            let follower_addr = follower_addr.clone();
+            let request_id = self.request_id.clone();
 
-            // _TODO: Should not be blocking, use state management inside the class instead
-            // Wait for acknowledgment with timeout (ex. 2 seconds)
-            match timeout(Duration::from_secs(2), receive_message(&self.socket)).await {
-                Ok(Ok((ack, _))) => {
-                    if let PaxosMessage::FollowerAck { .. } = ack {
-                        acks += 1;
+            tasks.spawn(async move {
+                // Send the request to the follower
+                send_message(
+                    &socket,
+                    PaxosMessage::LeaderRequest {
+                        request_id: request_id,
+                    },
+                    &follower_addr,
+                )
+                .await
+                .unwrap();
+                println!(
+                    "Leader broadcasted request to follower at {}",
+                    follower_addr
+                );
+
+                // Wait for acknowledgment with timeout (ex. 2 seconds)
+                match timeout(Duration::from_secs(2), receive_message(&socket)).await {
+                    Ok(Ok((ack, _))) => {
+                        if let PaxosMessage::FollowerAck { .. } = ack {
+                            println!(
+                                "Leader received acknowledgment from follower at {}",
+                                follower_addr
+                            );
+                            return Some(1);
+                        }
+                    }
+                    Ok(Err(e)) => {
                         println!(
-                            "Leader received acknowledgment from follower at {}",
+                            "Error receiving acknowledgment from follower at {}: {}",
+                            follower_addr, e
+                        );
+                    }
+                    Err(_) => {
+                        println!(
+                            "Timeout waiting for acknowledgment from follower at {}",
                             follower_addr
                         );
                     }
                 }
-                Ok(Err(e)) => {
-                    println!(
-                        "Error receiving acknowledgment from follower at {}: {}",
-                        follower_addr, e
-                    );
+
+                return Some(0);
+            });
+        }
+
+        while let Some(response) = tasks.join_next().await {
+            match response {
+                Ok(Some(value)) => {
+                    acks += value;
                 }
-                Err(_) => {
-                    println!(
-                        "Timeout waiting for acknowledgment from follower at {}",
-                        follower_addr
-                    );
-                }
+                _ => {} // Handle errors or None responses if needed
             }
         }
 
@@ -143,11 +182,16 @@ impl Node {
         }
 
         let mut acks = 1;
+        let mut tasks = JoinSet::new();
 
         for (index, follower_addr) in follower_list.iter().enumerate() {
             if follower_addr == self.address.to_string().as_str() {
                 continue;
             }
+
+            let socket = Arc::clone(&self.socket);
+            let follower_addr = follower_addr.clone();
+            let request_id = self.request_id.clone();
 
             let sent_operation = Operation {
                 op_type: operation.op_type.clone(),
@@ -157,46 +201,58 @@ impl Node {
                 },
             };
 
-            // Send the request to the follower
-            send_message(
-                &self.socket,
-                PaxosMessage::LeaderAccepted {
-                    request_id: self.request_id,
-                    operation: sent_operation,
-                },
-                follower_addr,
-            )
-            .await
-            .unwrap();
-            println!(
-                "Leader broadcasted request to follower at {}",
-                follower_addr
-            );
+            tasks.spawn(async move {
+                // Send the request to the follower
+                send_message(
+                    &socket,
+                    PaxosMessage::LeaderAccepted {
+                        request_id: request_id,
+                        operation: sent_operation,
+                    },
+                    follower_addr.as_str(),
+                )
+                .await
+                .unwrap();
+                println!(
+                    "Leader broadcasted request to follower at {}",
+                    follower_addr
+                );
 
-            // _TODO: Should not be blocking, use state management inside the class instead
-            // Wait for acknowledgment with timeout (ex. 2 seconds)
-            match timeout(Duration::from_secs(2), receive_message(&self.socket)).await {
-                Ok(Ok((ack, _))) => {
-                    if let PaxosMessage::FollowerAck { .. } = ack {
-                        acks += 1;
+                // Wait for acknowledgment with timeout (ex. 2 seconds)
+                match timeout(Duration::from_secs(2), receive_message(&socket)).await {
+                    Ok(Ok((ack, _))) => {
+                        if let PaxosMessage::FollowerAck { .. } = ack {
+                            println!(
+                                "Leader received acknowledgment from follower at {}",
+                                follower_addr
+                            );
+
+                            return Some(1);
+                        }
+                    }
+                    Ok(Err(e)) => {
                         println!(
-                            "Leader received acknowledgment from follower at {}",
+                            "Error receiving acknowledgment from follower at {}: {}",
+                            follower_addr, e
+                        );
+                    }
+                    Err(_) => {
+                        println!(
+                            "Timeout waiting for acknowledgment from follower at {}",
                             follower_addr
                         );
                     }
                 }
-                Ok(Err(e)) => {
-                    println!(
-                        "Error receiving acknowledgment from follower at {}: {}",
-                        follower_addr, e
-                    );
+                return Some(0);
+            });
+        }
+
+        while let Some(response) = tasks.join_next().await {
+            match response {
+                Ok(Some(value)) => {
+                    acks += value;
                 }
-                Err(_) => {
-                    println!(
-                        "Timeout waiting for acknowledgment from follower at {}",
-                        follower_addr
-                    );
-                }
+                _ => {} // Handle errors or None responses if needed
             }
         }
 
@@ -214,52 +270,69 @@ impl Node {
         }
 
         let mut acks = 1;
+        let mut tasks = JoinSet::new();
 
         for follower_addr in follower_list {
             if follower_addr == self.address.to_string().as_str() {
                 continue;
             }
 
-            // Send the request to the follower
-            send_message(
-                &self.socket,
-                PaxosMessage::LeaderAccepted {
-                    request_id: self.request_id,
-                    operation: operation.clone(),
-                },
-                follower_addr,
-            )
-            .await
-            .unwrap();
-            println!(
-                "Leader broadcasted request to follower at {}",
-                follower_addr
-            );
+            let socket = Arc::clone(&self.socket);
+            let follower_addr = follower_addr.clone();
+            let request_id = self.request_id.clone();
+            let operation = operation.clone();
 
-            // _TODO: Should not be blocking, use state management inside the class instead
-            // Wait for acknowledgment with timeout (ex. 2 seconds)
-            match timeout(Duration::from_secs(2), receive_message(&self.socket)).await {
-                Ok(Ok((ack, _))) => {
-                    if let PaxosMessage::FollowerAck { .. } = ack {
-                        acks += 1;
+            tasks.spawn(async move {
+                // Send the request to the follower
+                send_message(
+                    &socket,
+                    PaxosMessage::LeaderAccepted {
+                        request_id: request_id,
+                        operation: operation,
+                    },
+                    follower_addr.as_str(),
+                )
+                .await
+                .unwrap();
+                println!(
+                    "Leader broadcasted request to follower at {}",
+                    follower_addr
+                );
+
+                // Wait for acknowledgment with timeout (ex. 2 seconds)
+                match timeout(Duration::from_secs(2), receive_message(&socket)).await {
+                    Ok(Ok((ack, _))) => {
+                        if let PaxosMessage::FollowerAck { .. } = ack {
+                            println!(
+                                "Leader received acknowledgment from follower at {}",
+                                follower_addr
+                            );
+                            return Some(1);
+                        }
+                    }
+                    Ok(Err(e)) => {
                         println!(
-                            "Leader received acknowledgment from follower at {}",
+                            "Error receiving acknowledgment from follower at {}: {}",
+                            follower_addr, e
+                        );
+                    }
+                    Err(_) => {
+                        println!(
+                            "Timeout waiting for acknowledgment from follower at {}",
                             follower_addr
                         );
                     }
                 }
-                Ok(Err(e)) => {
-                    println!(
-                        "Error receiving acknowledgment from follower at {}: {}",
-                        follower_addr, e
-                    );
+                return Some(0);
+            });
+        }
+
+        while let Some(response) = tasks.join_next().await {
+            match response {
+                Ok(Some(value)) => {
+                    acks += value;
                 }
-                Err(_) => {
-                    println!(
-                        "Timeout waiting for acknowledgment from follower at {}",
-                        follower_addr
-                    );
-                }
+                _ => {} // Handle errors or None responses if needed
             }
         }
 

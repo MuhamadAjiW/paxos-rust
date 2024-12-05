@@ -245,14 +245,14 @@ impl Node {
         let size = follower_list.len();
 
         for follower_addr in follower_list.iter() {
-            let socket_ = Arc::clone(&self.socket);
+            let socket = Arc::clone(&self.socket);
             let key = key.to_string();
             let follower_addr = follower_addr.clone();
 
             tasks.spawn(async move {
                 // Send the request to the follower
                 if let Err(_e) = send_message(
-                    &socket_,
+                    &socket,
                     PaxosMessage::RecoveryRequest {
                         key: key.to_string(),
                     },
@@ -269,7 +269,7 @@ impl Node {
                 println!("Broadcasted request to follower at {}", follower_addr);
 
                 // Wait for acknowledgment with timeout (ex. 2 seconds)
-                match timeout(Duration::from_secs(2), receive_message(&socket_)).await {
+                match timeout(Duration::from_secs(2), receive_message(&socket)).await {
                     Ok(Ok((ack, _))) => {
                         if let PaxosMessage::RecoveryReply { index, payload } = ack {
                             println!("Received acknowledgment from {} ({})", follower_addr, index);
